@@ -1,7 +1,4 @@
-import http.client
-import json
+from app.services.json_downloader import download_default_cards
 
-host = "api.scryfall.com"
-conn = http.client.HTTPConnection(host)
-
+download_default_cards()
 
