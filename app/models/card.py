@@ -17,8 +17,8 @@ class Card:
                     [], None, None,
                     [], [])
 
-    # creates card object from scryfall json, using default objects stored in data
-    # static, so I don't need an already made card
+    # creates card object from scryfall json, is passed dictionary from list in services(card_creator)
+    # need to update card creator to pass this function a dictionary
     @staticmethod
     def create_from_json(jsonData):
         return Card(

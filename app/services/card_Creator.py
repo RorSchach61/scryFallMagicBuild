@@ -1,5 +1,5 @@
 import json
-from app.services.card import Card
+from app.models.card import Card
 
 
 # https://www.100daysofdata.com/python-json
@@ -18,5 +18,9 @@ class cardForge:
 
     @staticmethod
     def createCard(jsonData, name):
-        cardList = list(filter(lambda x: x if name in x["name"] else Card.blank_Card(), jsonData))
-        print(cardList[0])
+        cardList = list(filter(lambda x: name.lower() in x["name"].lower(), jsonData))
+        deck = []
+        for card in cardList:
+            deck.append(Card.create_from_json(card))
+        for card in deck:
+            print(card.name)
