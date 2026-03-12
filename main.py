@@ -1,5 +1,5 @@
 from app.services.json_downloader import download_default_cards
-from app.services.card_Creator import cardForge
+from app.services.searchCards import cardSearch
 #download_default_cards()
 
-cardForge.createCard(cardForge().parseJson(),"Forest")
+cardSearch.searchCard(cardSearch().parseJson(),"Forest")
