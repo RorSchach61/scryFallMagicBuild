@@ -18,12 +18,29 @@ class Card:
                     [], [])
 
     # creates card object from scryfall json, is passed dictionary from list in services(card_creator)
-    # need to update card creator to pass this function a dictionary
+    # double faced cards keep mana cost, power and colors on the individual faces
+    # rather than the top level, so the front face is used as a fallback
     @staticmethod
     def create_from_json(jsonData):
+        faces = jsonData.get("card_faces") or []
+        front = faces[0] if faces else {}
+
+        def field(key):
+            value = jsonData.get(key)
+            return front.get(key) if value is None else value
+
         return Card(
-            jsonData.get("name"), jsonData.get("mana_cost"),
-            jsonData.get("type_line"), jsonData.get("multiverse_ids"),
-            jsonData.get("power"), jsonData.get("toughness"), jsonData.get("colors"),
+            jsonData.get("name"), field("mana_cost"),
+            field("type_line"), jsonData.get("multiverse_ids"),
+            field("power"), field("toughness"), field("colors"),
             jsonData.get("color_identity")
         )
+
+    # creatures show power/toughness, everything else has neither
+    def power_toughness(self):
+        if self.power is None and self.toughness is None:
+            return ""
+        return f"{self.power}/{self.toughness}"
+
+    def __repr__(self):
+        return f"Card({self.name!r})"
