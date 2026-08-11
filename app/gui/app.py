@@ -4,6 +4,9 @@ Wires the panels to their repositories. The card repository is built on a worker
 thread because parsing the dataset takes seconds and would otherwise freeze the
 window; results come back through a queue since tk widgets may only be touched
 from the thread that created them.
+
+The window stays hidden until the sign-in gate succeeds, and hides again on
+sign out rather than tearing down, so the loaded dataset survives.
 """
 import queue
 import threading
@@ -11,6 +14,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from app.gui.detail_panel import DetailPanel
+from app.gui.login_window import LoginWindow
 from app.gui.search_panel import SearchPanel
 from app.gui.user_panel import UserPanel
 
@@ -22,16 +26,20 @@ class MagicSearchApp:
 
     # takes a factory for the cards rather than a repository so the window can
     # render and report progress while the dataset is still loading
-    def __init__(self, load_repository, user_repository, title="Scryfall Card Search"):
+    def __init__(self, load_repository, user_repository, session,
+                 title="Scryfall Card Search"):
         self._load_repository = load_repository
         self._users = user_repository
+        self._session = session
         self._repository = None
         self._events = queue.Queue()
+        self._loading_started = False
 
         self.root = tk.Tk()
         self.root.title(title)
         self.root.geometry("1000x620")
         self.root.minsize(820, 460)
+        self.root.withdraw()  # revealed once the gate is passed
         self._build()
 
     def _build(self):
@@ -43,9 +51,17 @@ class MagicSearchApp:
         notebook.add(self._build_cards_tab(notebook), text="Card Search")
         notebook.add(self._build_users_tab(notebook), text="Users")
 
+        bar = ttk.Frame(self.root)
+        bar.grid(row=1, column=0, sticky="ew")
+        bar.columnconfigure(0, weight=1)
+
         self.status = tk.StringVar(value="Loading cards…")
-        ttk.Label(self.root, textvariable=self.status, relief="sunken",
-                  anchor="w", padding=(6, 3)).grid(row=1, column=0, sticky="ew")
+        ttk.Label(bar, textvariable=self.status, relief="sunken",
+                  anchor="w", padding=(6, 3)).grid(row=0, column=0, sticky="ew")
+
+        self.identity = tk.StringVar(value="")
+        ttk.Label(bar, textvariable=self.identity, padding=(10, 3)).grid(row=0, column=1)
+        ttk.Button(bar, text="Sign out", command=self._sign_out).grid(row=0, column=2, padx=(0, 4))
 
     def _build_cards_tab(self, parent):
         panes = ttk.PanedWindow(parent, orient="horizontal")
@@ -88,7 +104,33 @@ class MagicSearchApp:
         self.status.set(f"Created user {user.username!r}")
         return user
 
+    # -- sign in -----------------------------------------------------------
+
+    def _require_login(self):
+        gate = LoginWindow(self.root, self._session, on_create=self._users.create)
+        self.root.wait_window(gate)
+        return self._session.is_authenticated()
+
+    def _show_identity(self):
+        self.identity.set(f"Signed in as {self._session.label()}")
+
+    def _sign_out(self):
+        self._session.logout()
+        self.root.withdraw()
+        if self._require_login():
+            self._show_identity()
+            self.user_panel.refresh()
+            self.root.deiconify()
+        else:
+            self.root.destroy()
+
+    # -- dataset loading ---------------------------------------------------
+
     def _load_in_background(self):
+        if self._loading_started:
+            return
+        self._loading_started = True
+
         def work():
             try:
                 repository = self._load_repository(
@@ -118,5 +160,10 @@ class MagicSearchApp:
         self.root.after(POLL_MS, self._drain_events)
 
     def run(self):
+        if not self._require_login():
+            self.root.destroy()  # gate dismissed, nothing to show
+            return
+        self._show_identity()
+        self.root.deiconify()
         self._load_in_background()
         self.root.mainloop()

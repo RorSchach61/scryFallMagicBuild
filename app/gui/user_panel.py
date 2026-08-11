@@ -13,10 +13,13 @@ ERROR_COLOR = "#b3261e"
 
 class UserPanel(ttk.Frame):
 
-    def __init__(self, parent, on_create, on_list):
+    # the sign-in gate reuses this form with show_existing off, since listing
+    # accounts to someone who has not signed in would enumerate them
+    def __init__(self, parent, on_create, on_list=None, show_existing=True):
         super().__init__(parent, padding=(12, 12))
         self._on_create = on_create
         self._on_list = on_list
+        self._show_existing = show_existing and on_list is not None
         self._build()
         self.refresh()
 
@@ -56,6 +59,10 @@ class UserPanel(ttk.Frame):
 
         self.message = ttk.Label(form, text="", wraplength=240, justify="left")
         self.message.grid(row=len(rows) + 2, column=0, columnspan=2, sticky="w", pady=(10, 0))
+
+        self.tree = None
+        if not self._show_existing:
+            return
 
         ttk.Label(self, text="Existing users").grid(row=0, column=1, sticky="nw")
         columns = ("username", "display", "created")
@@ -97,6 +104,8 @@ class UserPanel(ttk.Frame):
         self.message.configure(text=text, foreground=color)
 
     def refresh(self):
+        if self.tree is None:
+            return
         self.tree.delete(*self.tree.get_children())
         for user in self._on_list():
             created = datetime.fromtimestamp(user.created_at).strftime("%Y-%m-%d %H:%M")
