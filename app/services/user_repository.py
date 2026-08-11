@@ -86,7 +86,11 @@ class SqliteUserRepository(UserRepository):
         return self._to_user(row) if row else None
 
     def all_users(self):
-        rows = self.conn.execute("SELECT * FROM users ORDER BY created_at").fetchall()
+        # user_id breaks ties, since two accounts made in the same clock tick
+        # would otherwise come back in an unspecified order
+        rows = self.conn.execute(
+            "SELECT * FROM users ORDER BY created_at, user_id"
+        ).fetchall()
         return [self._to_user(row) for row in rows]
 
     def authenticate(self, username, password):
