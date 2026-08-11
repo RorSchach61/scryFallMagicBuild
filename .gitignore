@@ -25,5 +25,12 @@ Thumbs.db
 dist/
 build/
 
-# dataset files
+# dataset files, re-downloaded from scryfall on demand
 data/*.json
+data/*.jsonl
+data/*.jsonl.gz
+
+# local databases, contain user records and password hashes
+data/*.db
+data/*.db-wal
+data/*.db-shm
