@@ -1,7 +1,8 @@
 # Card class, takes dictionary of card data to create card, can also
 # make blank cards, most used by other funct in program
 class Card:
-    def __init__(self, name, mana_cost, type_line, multiverse_ids, power, toughness, colors, color_identity):
+    def __init__(self, name, mana_cost, type_line, multiverse_ids, power, toughness,
+                 colors, color_identity, image_url=None):
         self.name = name
         self.mana_cost = mana_cost
         self.type_line = type_line
@@ -10,6 +11,7 @@ class Card:
         self.toughness = toughness
         self.colors = colors
         self.color_identity = color_identity
+        self.image_url = image_url
 
     @staticmethod
     def blank_Card():
@@ -29,11 +31,16 @@ class Card:
             value = jsonData.get(key)
             return front.get(key) if value is None else value
 
+        # png over the jpg renditions: Tk's PhotoImage decodes png natively,
+        # so the art renders without adding a dependency on Pillow
+        image_uris = field("image_uris") or {}
+        image_url = image_uris.get("png") or image_uris.get("normal")
+
         return Card(
             jsonData.get("name"), field("mana_cost"),
             field("type_line"), jsonData.get("multiverse_ids"),
             field("power"), field("toughness"), field("colors"),
-            jsonData.get("color_identity")
+            jsonData.get("color_identity"), image_url
         )
 
     # creatures show power/toughness, everything else has neither
