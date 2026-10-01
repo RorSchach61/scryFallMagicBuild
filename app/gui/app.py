@@ -69,10 +69,17 @@ class MagicSearchApp:
         self.detail_panel = DetailPanel(panes)
         panes.add(self.search_panel, weight=4)
         panes.add(self.detail_panel, weight=1)
-        # the sash defaults to the middle, leaving the detail labels clipped,
-        # so it is placed once the panes have been given their real size
-        self.root.after(50, lambda: self._place_sash(panes))
+        self._card_panes = panes
         return panes
+
+    # must run after deiconify(), not at construction time: the window is
+    # withdrawn until sign-in succeeds, and winfo_width() on a withdrawn,
+    # never-yet-shown window returns 1, not its real size. Placing the sash
+    # off that bogus width drives it negative and the search pane collapses
+    # to nothing, which is exactly what a too-early call here caused before.
+    def _show_window(self):
+        self.root.deiconify()
+        self.root.after(50, lambda: self._place_sash(self._card_panes))
 
     def _place_sash(self, panes):
         try:
@@ -120,7 +127,7 @@ class MagicSearchApp:
         if self._require_login():
             self._show_identity()
             self.user_panel.refresh()
-            self.root.deiconify()
+            self._show_window()
         else:
             self.root.destroy()
 
@@ -164,6 +171,6 @@ class MagicSearchApp:
             self.root.destroy()  # gate dismissed, nothing to show
             return
         self._show_identity()
-        self.root.deiconify()
+        self._show_window()
         self._load_in_background()
         self.root.mainloop()
