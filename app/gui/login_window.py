@@ -27,9 +27,13 @@ class LoginWindow(tk.Toplevel):
         self.resizable(False, False)
         self._build()
 
-        self.transient(parent)
+        # deliberately not self.transient(parent): on Windows, a Toplevel
+        # transient to a withdrawn owner can fail to ever be mapped to a
+        # visible window, leaving the whole app invisible with no error.
+        # grab_set() alone is enough to keep this modal.
         self.protocol("WM_DELETE_WINDOW", self._cancel)
         self.grab_set()  # modal: the main window cannot be used behind it
+        self.lift()
         self.username.focus_set()
 
     def _build(self):

@@ -10,6 +10,12 @@ DEBOUNCE_MS = 150
 RESULT_LIMIT = 200
 
 
+COLUMNS = (
+    ("name", "Name", 240, lambda c: c.name),
+    ("mana", "Cost", 90,  lambda c: c.mana_cost or "N/A"),
+    ("type", "Type", 260, lambda c: c.type_line or ""),
+)
+
 class SearchPanel(ttk.Frame):
 
     def __init__(self, parent, on_search, on_select):
@@ -34,13 +40,16 @@ class SearchPanel(ttk.Frame):
         self.entry.grid(row=0, column=1, sticky="ew")
         self.query.trace_add("write", self._on_query_changed)
 
-        columns = ("name", "mana", "type")
-        self.tree = ttk.Treeview(self, columns=columns, show="headings", selectmode="browse")
-        for key, heading, width in (
-            ("name", "Name", 240), ("mana", "Cost", 90), ("type", "Type", 260)
-        ):
+        self.tree = ttk.Treeview(
+            self,
+            columns=tuple(key for key, *_ in COLUMNS),
+            show="headings",
+            selectmode="browse",
+        )
+        for key, heading, width, _ in COLUMNS:
             self.tree.heading(key, text=heading)
             self.tree.column(key, width=width, anchor="w")
+
         self.tree.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
         self.tree.bind("<<TreeviewSelect>>", self._on_row_selected)
 
@@ -65,7 +74,7 @@ class SearchPanel(ttk.Frame):
         for index, card in enumerate(cards):
             self.tree.insert(
                 "", "end", iid=str(index),
-                values=(card.name, card.mana_cost or "", card.type_line or ""),
+                values=tuple(accessor(card) for *_, accessor in COLUMNS),
             )
 
     def _on_row_selected(self, _event):

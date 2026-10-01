@@ -3,12 +3,12 @@ import tkinter as tk
 from tkinter import ttk
 
 FIELDS = (
-    ("Mana cost", lambda card: card.mana_cost or "—"),
-    ("Type", lambda card: card.type_line or "—"),
-    ("Power/Toughness", lambda card: card.power_toughness() or "—"),
+    ("Mana cost", lambda card: card.mana_cost or "N/A"),
+    ("Type", lambda card: card.type_line or "N/A"),
+    ("Power/Toughness", lambda card: card.power_toughness() or "N/A"),
     ("Colors", lambda card: ", ".join(card.colors or []) or "Colorless"),
     ("Color identity", lambda card: ", ".join(card.color_identity or []) or "Colorless"),
-    ("Multiverse IDs", lambda card: ", ".join(str(i) for i in card.multiverse_ids or []) or "—"),
+    ("Multiverse IDs", lambda card: ", ".join(str(i) for i in card.multiverse_ids or []) or "N/A"),
 )
 
 
