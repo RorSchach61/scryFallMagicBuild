@@ -1,41 +1,36 @@
-import json
-from functools import reduce
+"""Name matching and result ordering.
 
-from app.models.card import Card
-
-
-# https://www.100daysofdata.com/python-json
-# https://stackoverflow.com/questions/7771011/how-can-i-parse-read-and-use-json-in-python
-# parses json, creates python dictionary for creating cards
-
-class searchTools:
-    @staticmethod
-    def returnName(searchList):
-        return searchList
+Pure functions over strings, no file access and no card objects, so the rules
+can be tested on their own and reused by any caller.
+"""
 
 
 class cardSearch:
 
-    # scryfall json uses non ascii so utf-8 is needed to read those characters
-    @staticmethod
-    def parseJson():
-        file_name = "data/default_cards.json"
-        with open(file_name, 'r', encoding="utf-8") as f:
-            data = json.load(f)
-        return data
+    EXACT, PREFIX, WORD_START, CONTAINS = 0, 1, 2, 3
 
-    # time complexity O(n) creation time, fetches any card which contains name, will be updated later to
-    # be more abstract and accept numerous search input
     @staticmethod
-    def searchCard(jsonData, name):
-        cardList = filter(lambda x: name.lower().strip() in x["name"].lower().strip().split(), jsonData)
-        seen = set()
-        searchDict = {}
-        i = 1
-        for card in cardList:
-            if card["name"] not in seen:
-                seen.add(card["name"])
-                searchDict[card["name"]] = card
-        searchDict = sorted(searchDict, key=None)
-        for card in searchDict:
-            print(card)
+    def normalize(text):
+        return (text or "").strip().lower()
+
+    @staticmethod
+    def matches(name, term):
+        return cardSearch.normalize(term) in cardSearch.normalize(name)
+
+    # a search for "forest" should surface Forest before Deep Forest Hermit,
+    # so matches are bucketed by how closely they align before sorting
+    @staticmethod
+    def rank(name, term):
+        name, term = cardSearch.normalize(name), cardSearch.normalize(term)
+        if name == term:
+            return cardSearch.EXACT
+        if name.startswith(term):
+            return cardSearch.PREFIX
+        if any(word.startswith(term) for word in name.replace("//", " ").split()):
+            return cardSearch.WORD_START
+        return cardSearch.CONTAINS
+
+    # ties inside a bucket fall back to shorter name, then alphabetical
+    @staticmethod
+    def sortKey(name, term):
+        return (cardSearch.rank(name, term), len(name), cardSearch.normalize(name))
