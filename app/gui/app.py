@@ -16,10 +16,13 @@ from tkinter import ttk
 from app.gui.detail_panel import DetailPanel
 from app.gui.login_window import LoginWindow
 from app.gui.search_panel import SearchPanel
+from app.gui.theme import apply_theme
 from app.gui.user_panel import UserPanel
 
 POLL_MS = 100
 INITIAL_SASH = 660
+MOON = "\U0001F319"  # shown in light mode: click to switch to dark
+SUN = "☀"       # shown in dark mode: click to switch to light
 
 
 class MagicSearchApp:
@@ -34,6 +37,7 @@ class MagicSearchApp:
         self._repository = None
         self._events = queue.Queue()
         self._loading_started = False
+        self._dark_mode = False
 
         self.root = tk.Tk()
         self.root.title(title)
@@ -44,15 +48,21 @@ class MagicSearchApp:
 
     def _build(self):
         self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
+        self.root.rowconfigure(1, weight=1)
+
+        top_bar = ttk.Frame(self.root)
+        top_bar.grid(row=0, column=0, sticky="ew")
+        top_bar.columnconfigure(0, weight=1)
+        self.theme_button = ttk.Button(top_bar, text=MOON, width=3, command=self._toggle_theme)
+        self.theme_button.grid(row=0, column=1, sticky="e", padx=6, pady=4)
 
         notebook = ttk.Notebook(self.root)
-        notebook.grid(row=0, column=0, sticky="nsew")
+        notebook.grid(row=1, column=0, sticky="nsew")
         notebook.add(self._build_cards_tab(notebook), text="Card Search")
         notebook.add(self._build_users_tab(notebook), text="Users")
 
         bar = ttk.Frame(self.root)
-        bar.grid(row=1, column=0, sticky="ew")
+        bar.grid(row=2, column=0, sticky="ew")
         bar.columnconfigure(0, weight=1)
 
         self.status = tk.StringVar(value="Loading cards…")
@@ -62,6 +72,8 @@ class MagicSearchApp:
         self.identity = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.identity, padding=(10, 3)).grid(row=0, column=1)
         ttk.Button(bar, text="Sign out", command=self._sign_out).grid(row=0, column=2, padx=(0, 4))
+
+        self._apply_theme()
 
     def _build_cards_tab(self, parent):
         panes = ttk.PanedWindow(parent, orient="horizontal")
@@ -86,6 +98,15 @@ class MagicSearchApp:
             panes.sashpos(0, min(INITIAL_SASH, self.root.winfo_width() - 260))
         except tk.TclError:
             pass
+
+    def _apply_theme(self):
+        colors = apply_theme(self.root, self._dark_mode)
+        self.detail_panel.apply_theme(colors)
+        self.theme_button.configure(text=SUN if self._dark_mode else MOON)
+
+    def _toggle_theme(self):
+        self._dark_mode = not self._dark_mode
+        self._apply_theme()
 
     def _build_users_tab(self, parent):
         self.user_panel = UserPanel(

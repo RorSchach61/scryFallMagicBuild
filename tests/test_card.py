@@ -58,6 +58,26 @@ class CreateFromJsonTest(unittest.TestCase):
         self.assertIsNone(card.mana_cost)
         self.assertIsNone(card.power)
 
+    def test_prefers_png_image(self):
+        raw = {"name": "Forest", "image_uris": {"png": "png-url", "normal": "jpg-url"}}
+        self.assertEqual(Card.create_from_json(raw).image_url, "png-url")
+
+    def test_falls_back_to_normal_when_png_missing(self):
+        raw = {"name": "Forest", "image_uris": {"normal": "jpg-url"}}
+        self.assertEqual(Card.create_from_json(raw).image_url, "jpg-url")
+
+    def test_double_faced_image_comes_from_the_front_face(self):
+        raw = dict(DOUBLE_FACED)
+        raw["card_faces"] = [
+            dict(DOUBLE_FACED["card_faces"][0], image_uris={"png": "front-url"}),
+            dict(DOUBLE_FACED["card_faces"][1], image_uris={"png": "back-url"}),
+        ]
+        self.assertEqual(Card.create_from_json(raw).image_url, "front-url")
+
+    def test_no_image_uris_gives_none(self):
+        card = Card.create_from_json({"name": "No Art"})
+        self.assertIsNone(card.image_url)
+
 
 class PowerToughnessTest(unittest.TestCase):
 

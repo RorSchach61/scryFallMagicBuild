@@ -9,7 +9,6 @@ from tkinter import ttk
 DEBOUNCE_MS = 150
 RESULT_LIMIT = 200
 
-
 COLUMNS = (
     ("name", "Name", 240, lambda c: c.name),
     ("mana", "Cost", 90,  lambda c: c.mana_cost or "N/A"),
