@@ -17,15 +17,24 @@ def download_oracle_cards():
             print('Latest download detected, SKIPPING download')
             return
 
-    client = ScryfallClient()
-    bulk_data = client.get_json_data()
-    datasets = bulk_data["data"]
+    # a failed refresh is not fatal: an older file still works, and a missing
+    # one is reported by dataset.py once the window is up
+    try:
+        client = ScryfallClient()
+        bulk_data = client.get_json_data()
+        datasets = bulk_data["data"]
 
-    # oracle_cards is one entry per unique card, default_cards is one per printing
-    for item in datasets:
-        if item["type"] == BULK_DATASET_TYPE:
-            download_url = item["jsonl_download_uri"]
-            DATA_DIR.mkdir(parents=True, exist_ok=True)
-            urllib.request.urlretrieve(download_url, ORACLE_CARDS_PATH)
-            print("Download complete")
-            break
+        # oracle_cards is one entry per unique card, default_cards is one per printing
+        for item in datasets:
+            if item["type"] == BULK_DATASET_TYPE:
+                download_url = item["jsonl_download_uri"]
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                # download to a .part file first so an interrupted download
+                # never leaves a half-written file under the real name
+                tmp = ORACLE_CARDS_PATH.with_suffix(".part")
+                urllib.request.urlretrieve(download_url, tmp)
+                tmp.replace(ORACLE_CARDS_PATH)
+                print("Download complete")
+                break
+    except (OSError, KeyError, ValueError) as exc:
+        print(f"Could not download card data: {exc}")
