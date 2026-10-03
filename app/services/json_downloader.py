@@ -1,4 +1,5 @@
 import os
+import shutil
 import urllib.request
 import time
 
@@ -11,7 +12,7 @@ from app.config import BULK_DATASET_TYPE, DATA_DIR, ORACLE_CARDS_PATH, TWELVE_HO
 # every 12 hours. Avoids getting ip banned due to rate limits/saves user bandwidth
 def download_oracle_cards():
     if ORACLE_CARDS_PATH.exists():
-        lastDownload = os.path.getmtime(ORACLE_CARDS_PATH)  # fetches time file updated/last downloaded
+        lastDownload = os.path.getmtime(ORACLE_CARDS_PATH)
         now = time.time()
         if now - lastDownload < TWELVE_HOURS:
             print('Latest download detected, SKIPPING download')
@@ -29,10 +30,10 @@ def download_oracle_cards():
             if item["type"] == BULK_DATASET_TYPE:
                 download_url = item["jsonl_download_uri"]
                 DATA_DIR.mkdir(parents=True, exist_ok=True)
-                # download to a .part file first so an interrupted download
-                # never leaves a half-written file under the real name
                 tmp = ORACLE_CARDS_PATH.with_suffix(".part")
-                urllib.request.urlretrieve(download_url, tmp)
+                with urllib.request.urlopen(download_url, timeout=30) as response, \
+                        open(tmp, "wb") as out:
+                    shutil.copyfileobj(response, out)
                 tmp.replace(ORACLE_CARDS_PATH)
                 print("Download complete")
                 break

@@ -16,7 +16,7 @@ class ScryfallClient:
     # Grabs list of bulk data files
     def get_json_data(self):
         time.sleep(0.1)
-        conn = http.client.HTTPSConnection(self.host)
+        conn = http.client.HTTPSConnection(self.host, timeout=10)
         conn.request("GET", "/bulk-data", headers=self.headers)
 
         response = conn.getresponse()
