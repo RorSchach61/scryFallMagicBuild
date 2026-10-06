@@ -13,6 +13,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
+from app.gui.deck_panel import DeckPanel
 from app.gui.detail_panel import DetailPanel
 from app.gui.login_window import LoginWindow
 from app.gui.search_panel import SearchPanel
@@ -29,10 +30,11 @@ class MagicSearchApp:
 
     # takes a factory for the cards rather than a repository so the window can
     # render and report progress while the dataset is still loading
-    def __init__(self, load_repository, user_repository, session,
+    def __init__(self, load_repository, user_repository, deck_repository, session,
                  title="Scryfall Card Search"):
         self._load_repository = load_repository
         self._users = user_repository
+        self._deck_repo = deck_repository
         self._session = session
         self._repository = None
         self._events = queue.Queue()
@@ -59,6 +61,7 @@ class MagicSearchApp:
         notebook = ttk.Notebook(self.root)
         notebook.grid(row=1, column=0, sticky="nsew")
         notebook.add(self._build_cards_tab(notebook), text="Card Search")
+        notebook.add(self._build_decks_tab(notebook), text="Decks")
         notebook.add(self._build_users_tab(notebook), text="Users")
 
         bar = ttk.Frame(self.root)
@@ -78,7 +81,7 @@ class MagicSearchApp:
     def _build_cards_tab(self, parent):
         panes = ttk.PanedWindow(parent, orient="horizontal")
         self.search_panel = SearchPanel(panes, on_search=self._search, on_select=self._select)
-        self.detail_panel = DetailPanel(panes)
+        self.detail_panel = DetailPanel(panes, on_add_to_deck=self._add_to_deck)
         panes.add(self.search_panel, weight=4)
         panes.add(self.detail_panel, weight=1)
         self._card_panes = panes
@@ -132,6 +135,52 @@ class MagicSearchApp:
         self.status.set(f"Created user {user.username!r}")
         return user
 
+    # -- decks -------------------------------------------------------------
+    # every deck call passes the signed-in user's id and the repository checks
+    # it, so neither panel ever decides whose decks it is showing
+
+    def _build_decks_tab(self, parent):
+        self.deck_panel = DeckPanel(
+            parent,
+            on_list=lambda: self._deck_repo.decks_for(self._user_id()),
+            on_create=self._create_deck,
+            on_delete=self._delete_deck,
+            on_cards=lambda deck_id: self._deck_repo.cards_in(self._user_id(), deck_id),
+            on_remove=self._remove_from_deck,
+        )
+        return self.deck_panel
+
+    def _user_id(self):
+        return self._session.user.user_id
+
+    # both the deck tab and the card pane's deck picker show deck data, so
+    # any change refreshes the two together
+    def _refresh_decks(self):
+        self.deck_panel.refresh()
+        self.detail_panel.set_decks(self._deck_repo.decks_for(self._user_id()))
+
+    def _create_deck(self, name):
+        deck = self._deck_repo.create(self._user_id(), name)
+        self._refresh_decks()
+        return deck
+
+    def _delete_deck(self, deck_id):
+        self._deck_repo.delete(self._user_id(), deck_id)
+        self._refresh_decks()
+
+    def _remove_from_deck(self, deck_id, oracle_id):
+        self._deck_repo.remove_card(self._user_id(), deck_id, oracle_id)
+        self._refresh_decks()
+
+    def _add_to_deck(self, deck, card):
+        try:
+            self._deck_repo.add_card(self._user_id(), deck.deck_id, card)
+        except ValueError as exc:
+            self.status.set(str(exc))
+            return
+        self._refresh_decks()
+        self.status.set(f"Added {card.name} to {deck.name}")
+
     # -- sign in -----------------------------------------------------------
 
     def _require_login(self):
@@ -139,14 +188,17 @@ class MagicSearchApp:
         self.root.wait_window(gate)
         return self._session.is_authenticated()
 
-    def _show_identity(self):
+    # runs after every successful sign in, so a second user never sees the
+    # previous user's decks
+    def _on_signed_in(self):
         self.identity.set(f"Signed in as {self._session.label()}")
+        self._refresh_decks()
 
     def _sign_out(self):
         self._session.logout()
         self.root.withdraw()
         if self._require_login():
-            self._show_identity()
+            self._on_signed_in()
             self.user_panel.refresh()
             self._show_window()
         else:
@@ -191,7 +243,7 @@ class MagicSearchApp:
         if not self._require_login():
             self.root.destroy()  # gate dismissed, nothing to show
             return
-        self._show_identity()
+        self._on_signed_in()
         self._show_window()
         self._load_in_background()
         self.root.mainloop()

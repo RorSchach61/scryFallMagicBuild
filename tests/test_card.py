@@ -78,6 +78,15 @@ class CreateFromJsonTest(unittest.TestCase):
         card = Card.create_from_json({"name": "No Art"})
         self.assertIsNone(card.image_url)
 
+    def test_reads_oracle_id(self):
+        card = Card.create_from_json({"name": "Forest", "oracle_id": "abc-123"})
+        self.assertEqual(card.oracle_id, "abc-123")
+
+    def test_oracle_id_falls_back_to_the_front_face(self):
+        # reversible cards keep their oracle_id on the faces
+        raw = {"name": "Reversible", "card_faces": [{"oracle_id": "front-id"}]}
+        self.assertEqual(Card.create_from_json(raw).oracle_id, "front-id")
+
 
 class PowerToughnessTest(unittest.TestCase):
 

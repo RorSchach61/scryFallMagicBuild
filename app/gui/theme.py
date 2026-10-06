@@ -53,6 +53,12 @@ def apply_theme(root, dark):
     style.configure("TEntry", fieldbackground=colors["field_bg"], foreground=colors["fg"],
                      insertcolor=colors["fg"])
 
+    # readonly is the combobox's normal state here, and clam styles it separately
+    style.configure("TCombobox", fieldbackground=colors["field_bg"], foreground=colors["fg"],
+                     background=colors["field_bg"], arrowcolor=colors["fg"])
+    style.map("TCombobox", fieldbackground=[("readonly", colors["field_bg"])],
+              foreground=[("readonly", colors["fg"])])
+
     style.configure("TNotebook", background=colors["bg"], borderwidth=0)
     style.configure("TNotebook.Tab", background=colors["bg"], foreground=colors["fg"],
                      padding=(10, 4))
