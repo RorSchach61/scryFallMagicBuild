@@ -41,7 +41,7 @@ class LoginWindow(tk.Toplevel):
         notebook.pack(fill="both", expand=True, padx=10, pady=10)
         notebook.add(self._build_signin(notebook), text="Sign in")
         notebook.add(
-            UserPanel(notebook, on_create=self._create_and_sign_in, show_existing=False),
+            UserPanel(notebook, on_create=self._create_and_sign_in),
             text="Create account",
         )
 
