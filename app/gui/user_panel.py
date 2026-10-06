@@ -1,10 +1,10 @@
-"""Create-user form and the list of existing accounts.
+"""Create-user form.
 
-Owns no storage. It is handed callbacks for creating and listing users, so the
-same panel works against any UserRepository implementation.
+Owns no storage. It is handed a callback for creating users, so the same form
+works against any UserRepository implementation. It deliberately shows no list
+of existing accounts, since that would let anyone enumerate them.
 """
 import tkinter as tk
-from datetime import datetime
 from tkinter import ttk
 
 OK_COLOR = "#1a7f37"
@@ -13,23 +13,14 @@ ERROR_COLOR = "#b3261e"
 
 class UserPanel(ttk.Frame):
 
-    # the sign-in gate reuses this form with show_existing off, since listing
-    # accounts to someone who has not signed in would enumerate them
-    def __init__(self, parent, on_create, on_list=None, show_existing=True):
+    def __init__(self, parent, on_create):
         super().__init__(parent, padding=(12, 12))
         self._on_create = on_create
-        self._on_list = on_list
-        self._show_existing = show_existing and on_list is not None
         self._build()
-        self.refresh()
 
     def _build(self):
-        self.columnconfigure(0, weight=0)
-        self.columnconfigure(1, weight=1)
-        self.rowconfigure(1, weight=1)
-
         form = ttk.LabelFrame(self, text="New user", padding=(12, 8))
-        form.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 16))
+        form.grid(row=0, column=0, sticky="nw")
         form.columnconfigure(1, weight=1)
 
         self.fields = {}
@@ -60,21 +51,6 @@ class UserPanel(ttk.Frame):
         self.message = ttk.Label(form, text="", wraplength=240, justify="left")
         self.message.grid(row=len(rows) + 2, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
-        self.tree = None
-        if not self._show_existing:
-            return
-
-        ttk.Label(self, text="Existing users").grid(row=0, column=1, sticky="nw")
-        columns = ("username", "display", "created")
-        self.tree = ttk.Treeview(self, columns=columns, show="headings", selectmode="browse")
-        for key, heading, width in (
-            ("username", "Username", 150), ("display", "Display name", 170),
-            ("created", "Created", 140),
-        ):
-            self.tree.heading(key, text=heading)
-            self.tree.column(key, width=width, anchor="w")
-        self.tree.grid(row=1, column=1, sticky="nsew", pady=(22, 0))
-
     def _submit(self):
         values = {key: var.get() for key, var in self.fields.items()}
         self.create_button.configure(state="disabled")
@@ -90,7 +66,6 @@ class UserPanel(ttk.Frame):
         else:
             self._set_message(f"Created {user.label()}.", OK_COLOR)
             self._clear(keep_message=True)
-            self.refresh()
         finally:
             self.create_button.configure(state="normal")
 
@@ -102,11 +77,3 @@ class UserPanel(ttk.Frame):
 
     def _set_message(self, text, color):
         self.message.configure(text=text, foreground=color)
-
-    def refresh(self):
-        if self.tree is None:
-            return
-        self.tree.delete(*self.tree.get_children())
-        for user in self._on_list():
-            created = datetime.fromtimestamp(user.created_at).strftime("%Y-%m-%d %H:%M")
-            self.tree.insert("", "end", values=(user.username, user.display_name or "—", created))
