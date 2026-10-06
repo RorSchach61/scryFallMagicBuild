@@ -25,8 +25,11 @@ class DetailPanel(ttk.Frame):
     # a plain Frame can't scroll on its own, so the pane is a Canvas holding
     # an embedded content Frame; everything below used to be built directly
     # on `self` and now builds on that embedded frame instead
-    def __init__(self, parent):
+    def __init__(self, parent, on_add_to_deck=None):
         super().__init__(parent)
+        self._on_add_to_deck = on_add_to_deck
+        self._card = None
+        self._decks = []
         self._values = {}
         self._image_cache = {}  # url -> PhotoImage, so revisiting a card is free
         self._image_events = queue.Queue()
@@ -83,10 +86,45 @@ class DetailPanel(ttk.Frame):
             value.grid(row=row * 2 + 2, column=0, sticky="w")
             self._values[label] = value
 
+        add_row = ttk.Frame(parent)
+        add_row.grid(row=len(FIELDS) * 2 + 1, column=0, sticky="w", pady=(12, 0))
+        self.deck_choice = ttk.Combobox(add_row, state="readonly", width=18)
+        self.deck_choice.grid(row=0, column=0)
+        self.add_button = ttk.Button(add_row, text="Add to deck", command=self._add_to_deck)
+        self.add_button.grid(row=0, column=1, padx=(6, 0))
+
         self.image_label = ttk.Label(parent)
-        self.image_label.grid(row=len(FIELDS) * 2 + 1, column=0, sticky="w", pady=(12, 0))
+        self.image_label.grid(row=len(FIELDS) * 2 + 2, column=0, sticky="w", pady=(12, 0))
+
+    # -- adding to a deck ----------------------------------------------
+
+    # called by the window whenever the user's decks change
+    def set_decks(self, decks):
+        current = self.deck_choice.get()
+        self._decks = list(decks)
+        names = [deck.name for deck in self._decks]
+        self.deck_choice.configure(values=names)
+        if current in names:
+            self.deck_choice.set(current)
+        elif names:
+            self.deck_choice.current(0)
+        else:
+            self.deck_choice.set("")
+        self._update_add_state()
+
+    def _update_add_state(self):
+        usable = self._card is not None and bool(self._decks) and self._on_add_to_deck is not None
+        self.deck_choice.configure(state="readonly" if usable else "disabled")
+        self.add_button.configure(state="normal" if usable else "disabled")
+
+    def _add_to_deck(self):
+        index = self.deck_choice.current()
+        if self._card is not None and index >= 0:
+            self._on_add_to_deck(self._decks[index], self._card)
 
     def show(self, card):
+        self._card = card
+        self._update_add_state()
         self.title.configure(text=card.name)
         for label, extract in FIELDS:
             self._values[label].configure(text=extract(card))
@@ -99,6 +137,8 @@ class DetailPanel(ttk.Frame):
         self._canvas.yview_moveto(0)
 
     def clear(self):
+        self._card = None
+        self._update_add_state()
         self.title.configure(text="No card selected")
         for label, _ in FIELDS:
             self._values[label].configure(text="")
