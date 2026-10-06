@@ -18,7 +18,6 @@ from app.gui.detail_panel import DetailPanel
 from app.gui.login_window import LoginWindow
 from app.gui.search_panel import SearchPanel
 from app.gui.theme import apply_theme
-from app.gui.user_panel import UserPanel
 
 POLL_MS = 100
 INITIAL_SASH = 660
@@ -62,7 +61,6 @@ class MagicSearchApp:
         notebook.grid(row=1, column=0, sticky="nsew")
         notebook.add(self._build_cards_tab(notebook), text="Card Search")
         notebook.add(self._build_decks_tab(notebook), text="Decks")
-        notebook.add(self._build_users_tab(notebook), text="Users")
 
         bar = ttk.Frame(self.root)
         bar.grid(row=2, column=0, sticky="ew")
@@ -111,12 +109,6 @@ class MagicSearchApp:
         self._dark_mode = not self._dark_mode
         self._apply_theme()
 
-    def _build_users_tab(self, parent):
-        self.user_panel = UserPanel(
-            parent, on_create=self._create_user, on_list=self._users.all_users
-        )
-        return self.user_panel
-
     def _search(self, term, limit):
         if self._repository is None:
             return []
@@ -129,11 +121,6 @@ class MagicSearchApp:
 
     def _select(self, card):
         self.detail_panel.show(card)
-
-    def _create_user(self, username, display_name, password, confirmation):
-        user = self._users.create(username, display_name, password, confirmation)
-        self.status.set(f"Created user {user.username!r}")
-        return user
 
     # -- decks -------------------------------------------------------------
     # every deck call passes the signed-in user's id and the repository checks
@@ -199,7 +186,6 @@ class MagicSearchApp:
         self.root.withdraw()
         if self._require_login():
             self._on_signed_in()
-            self.user_panel.refresh()
             self._show_window()
         else:
             self.root.destroy()
