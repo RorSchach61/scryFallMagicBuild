@@ -24,9 +24,11 @@ class ScryfallClient:
         finally:
             conn.close()
 
-        # an error page (429 rate limit, 500) would otherwise be parsed as if
-        # it were the bulk data list and fail later with a confusing KeyError
+        self._check_status(response)
+        return json.loads(data)
+
+    @staticmethod
+    def _check_status(response):
         if response.status != 200:
             raise OSError(f"Scryfall returned HTTP {response.status}")
-        return json.loads(data)
 
