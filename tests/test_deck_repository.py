@@ -212,6 +212,13 @@ class PersistenceTest(DeckRepositoryTest):
         entries = reopened.cards_in(self.will, deck.deck_id)
         self.assertEqual([(e.name, e.quantity) for e in entries], [("Forest", 2)])
 
+    def test_deleting_a_user_deletes_their_decks(self):
+        self.repo.create(self.will, "Burn")
+        # no delete method on the user repo yet, so delete through its connection
+        self.users.conn.execute("DELETE FROM users WHERE user_id = ?", (self.will,))
+        self.users.conn.commit()
+        self.assertEqual(self.repo.decks_for(self.will), [])
+
 
 if __name__ == "__main__":
     unittest.main()
