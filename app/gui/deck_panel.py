@@ -88,7 +88,9 @@ class DeckPanel(ttk.Frame):
         deck_id = int(selection[0])
         return next((deck for deck in self._decks if deck.deck_id == deck_id), None)
 
+    # rebuilds (a refresh can rebuild this list more than once)
     def _show_cards(self):
+        selected = self.card_tree.selection()
         self.card_tree.delete(*self.card_tree.get_children())
         deck = self._selected_deck()
         if deck is None:
@@ -97,8 +99,10 @@ class DeckPanel(ttk.Frame):
             return
         self.deck_title.configure(text=f"{deck.name} ({deck.card_count} cards)")
         self._entries = self._on_cards(deck.deck_id)
-        for index, entry in enumerate(self._entries):
-            self.card_tree.insert("", "end", iid=str(index), values=(entry.quantity, entry.name))
+        for entry in self._entries:
+            self.card_tree.insert("", "end", iid=entry.oracle_id, values=(entry.quantity, entry.name))
+        if selected and self.card_tree.exists(selected[0]):
+            self.card_tree.selection_set(selected[0])
 
     def _create(self):
         try:
@@ -127,10 +131,7 @@ class DeckPanel(ttk.Frame):
         if deck is None or not selection:
             self._set_message("Select a card in the deck first.", ERROR_COLOR)
             return
-        index = int(selection[0])
-        self._on_remove(deck.deck_id, self._entries[index].oracle_id)
-        if self.card_tree.exists(str(index)):
-            self.card_tree.selection_set(str(index))
+        self._on_remove(deck.deck_id, selection[0])
         self._set_message("", OK_COLOR)
 
     def _set_message(self, text, color):
