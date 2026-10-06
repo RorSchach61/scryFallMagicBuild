@@ -7,11 +7,16 @@ from app.services.session import Session
 from app.services.user_repository import SqliteUserRepository
 
 
-def main():
+# runs on the window's loading thread, so a slow download never delays the window
+def load_cards(progress=None):
     download_oracle_cards()
+    return InMemoryCardRepository.load(progress)
+
+
+def main():
     users = SqliteUserRepository()  # first: the decks table references users
     MagicSearchApp(
-        load_repository=InMemoryCardRepository.load,
+        load_repository=load_cards,
         user_repository=users,
         deck_repository=SqliteDeckRepository(),
         session=Session(users),
