@@ -17,10 +17,16 @@ class ScryfallClient:
     def get_json_data(self):
         time.sleep(0.1)
         conn = http.client.HTTPSConnection(self.host, timeout=10)
-        conn.request("GET", "/bulk-data", headers=self.headers)
+        try:
+            conn.request("GET", "/bulk-data", headers=self.headers)
+            response = conn.getresponse()
+            data = response.read()
+        finally:
+            conn.close()
 
-        response = conn.getresponse()
-        data = response.read()
-
+        # an error page (429 rate limit, 500) would otherwise be parsed as if
+        # it were the bulk data list and fail later with a confusing KeyError
+        if response.status != 200:
+            raise OSError(f"Scryfall returned HTTP {response.status}")
         return json.loads(data)
 
