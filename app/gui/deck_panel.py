@@ -13,13 +13,15 @@ ERROR_COLOR = "#b3261e"
 
 class DeckPanel(ttk.Frame):
 
-    def __init__(self, parent, on_list, on_create, on_delete, on_cards, on_remove):
+    def __init__(self, parent, on_list, on_create, on_delete, on_cards, on_remove,
+                 on_select=None):
         super().__init__(parent, padding=(12, 12))
         self._on_list = on_list
         self._on_create = on_create
         self._on_delete = on_delete
         self._on_cards = on_cards
         self._on_remove = on_remove
+        self._on_select = on_select
         self._decks = []
         self._entries = []
         self._build()
@@ -62,12 +64,21 @@ class DeckPanel(ttk.Frame):
         self.card_tree.column("qty", width=50, anchor="e")
         self.card_tree.column("name", width=300, anchor="w")
         self.card_tree.grid(row=1, column=1, sticky="nsew", pady=(8, 0))
+        self.card_tree.bind("<<TreeviewSelect>>", lambda _event: self._card_selected())
 
         ttk.Button(self, text="Remove one", command=self._remove).grid(
             row=2, column=1, sticky="w", pady=(8, 0))
 
         self.message = ttk.Label(self, text="", wraplength=600, justify="left")
         self.message.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+
+    # rows are keyed by oracle_id, so the selection is the id the window needs
+    # to look the full card up; rebuilding the list also fires this with an
+    # empty selection, which is skipped
+    def _card_selected(self):
+        selection = self.card_tree.selection()
+        if selection and self._on_select is not None:
+            self._on_select(selection[0])
 
     # rebuilds both lists from storage, keeping whichever deck was selected
     def refresh(self):

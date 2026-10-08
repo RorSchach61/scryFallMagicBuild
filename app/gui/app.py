@@ -103,6 +103,7 @@ class MagicSearchApp:
     def _apply_theme(self):
         colors = apply_theme(self.root, self._dark_mode)
         self.detail_panel.apply_theme(colors)
+        self.deck_detail_panel.apply_theme(colors)
         self.theme_button.configure(text=SUN if self._dark_mode else MOON)
 
     def _toggle_theme(self):
@@ -126,16 +127,35 @@ class MagicSearchApp:
     # every deck call passes the signed-in user's id and the repository checks
     # it, so neither panel ever decides whose decks it is showing
 
+    # same split as the card tab, so a card in a deck can be inspected without
+    # leaving the tab
     def _build_decks_tab(self, parent):
+        panes = ttk.PanedWindow(parent, orient="horizontal")
         self.deck_panel = DeckPanel(
-            parent,
+            panes,
             on_list=lambda: self._deck_repo.decks_for(self._user_id()),
             on_create=self._create_deck,
             on_delete=self._delete_deck,
             on_cards=lambda deck_id: self._deck_repo.cards_in(self._user_id(), deck_id),
             on_remove=self._remove_from_deck,
+            on_select=self._select_deck_card,
         )
-        return self.deck_panel
+        self.deck_detail_panel = DetailPanel(panes, on_add_to_deck=self._add_to_deck)
+        panes.add(self.deck_panel, weight=4)
+        panes.add(self.deck_detail_panel, weight=1)
+        return panes
+
+    # deck rows hold only an oracle_id, so the full card comes from the
+    # repository, which is not there until the dataset finishes loading
+    def _select_deck_card(self, oracle_id):
+        if self._repository is None:
+            self.status.set("Cards are still loading, try again in a moment")
+            return
+        card = self._repository.find(oracle_id)
+        if card is None:
+            self.status.set("That card is no longer in the card data")
+            return
+        self.deck_detail_panel.show(card)
 
     def _user_id(self):
         return self._session.user.user_id
@@ -144,7 +164,9 @@ class MagicSearchApp:
     # any change refreshes the two together
     def _refresh_decks(self):
         self.deck_panel.refresh()
-        self.detail_panel.set_decks(self._deck_repo.decks_for(self._user_id()))
+        decks = self._deck_repo.decks_for(self._user_id())
+        self.detail_panel.set_decks(decks)
+        self.deck_detail_panel.set_decks(decks)
 
     def _create_deck(self, name):
         deck = self._deck_repo.create(self._user_id(), name)
