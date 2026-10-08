@@ -16,3 +16,15 @@ BULK_DATASET_TYPE = "oracle_cards"
 # scryfall regenerates bulk data on this cadence, so re-downloading sooner
 # only burns bandwidth and rate limit
 TWELVE_HOURS = 43200
+
+# keys must match scryfall's legalities keys so a deck's format can be passed
+# straight to Card.is_legal
+FORMATS = (
+    ("standard", "Standard"),
+    ("pioneer", "Pioneer"),
+    ("modern", "Modern"),
+    ("legacy", "Legacy"),
+    ("vintage", "Vintage"),
+    ("pauper", "Pauper"),
+    ("commander", "Commander"),
+)
