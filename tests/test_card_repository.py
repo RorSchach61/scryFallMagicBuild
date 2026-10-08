@@ -60,6 +60,25 @@ class SearchTest(unittest.TestCase):
         self.assertIsInstance(self.repo.search("forest")[0], Card)
 
 
+class FindTest(unittest.TestCase):
+
+    def setUp(self):
+        self.repo = InMemoryCardRepository([
+            Card.create_from_json({"name": "Forest", "oracle_id": "forest-id"}),
+            Card.create_from_json({"name": "No Id"}),
+        ])
+
+    def test_finds_card_by_oracle_id(self):
+        self.assertEqual(self.repo.find("forest-id").name, "Forest")
+
+    def test_unknown_id_returns_none(self):
+        self.assertIsNone(self.repo.find("missing-id"))
+
+    def test_cards_without_an_id_are_not_indexed(self):
+        # a None key would otherwise match find(None)
+        self.assertIsNone(self.repo.find(None))
+
+
 class CountTest(unittest.TestCase):
 
     def test_counts_every_card(self):
