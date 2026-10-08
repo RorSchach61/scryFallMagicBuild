@@ -12,12 +12,13 @@ from app.config import FORMATS
 OK_COLOR = "#1a7f37"
 ERROR_COLOR = "#b3261e"
 NO_FORMAT = "No format"
+STATUS_LABELS = {"banned": "Banned", "not_legal": "Not legal", "unknown": "Unknown"}
 
 
 class DeckPanel(ttk.Frame):
 
     def __init__(self, parent, on_list, on_create, on_delete, on_cards, on_remove,
-                 on_select=None, on_set_format=None):
+                 on_select=None, on_set_format=None, on_check=None):
         super().__init__(parent, padding=(12, 12))
         self._on_list = on_list
         self._on_create = on_create
@@ -26,6 +27,7 @@ class DeckPanel(ttk.Frame):
         self._on_remove = on_remove
         self._on_select = on_select
         self._on_set_format = on_set_format
+        self._on_check = on_check
         self._decks = []
         self._entries = []
         self._build()
@@ -72,12 +74,15 @@ class DeckPanel(ttk.Frame):
         self.format_choice.grid(row=0, column=1, sticky="e")
         self.format_choice.bind("<<ComboboxSelected>>", lambda _event: self._format_chosen())
 
-        self.card_tree = ttk.Treeview(self, columns=("qty", "name"), show="headings",
-                                      selectmode="browse")
+        self.card_tree = ttk.Treeview(self, columns=("qty", "name", "legal"),
+                                      show="headings", selectmode="browse")
         self.card_tree.heading("qty", text="Qty")
         self.card_tree.heading("name", text="Card")
+        self.card_tree.heading("legal", text="Legal")
         self.card_tree.column("qty", width=50, anchor="e")
         self.card_tree.column("name", width=300, anchor="w")
+        self.card_tree.column("legal", width=80, anchor="w")
+        self.card_tree.tag_configure("illegal", foreground=ERROR_COLOR)
         self.card_tree.grid(row=1, column=1, sticky="nsew", pady=(8, 0))
         self.card_tree.bind("<<TreeviewSelect>>", lambda _event: self._card_selected())
 
@@ -126,13 +131,31 @@ class DeckPanel(ttk.Frame):
             self.format_choice.set("")
             self.format_choice.configure(state="disabled")
             return
-        self.deck_title.configure(text=f"{deck.name} ({deck.card_count} cards)")
         self._show_format(deck.format)
         self._entries = self._on_cards(deck.deck_id)
+        problems = self._check(deck.format)
+        title = f"{deck.name} ({deck.card_count} cards)"
+        if problems:
+            title += f", {len(problems)} illegal for {dict(FORMATS).get(deck.format, deck.format)}"
+        self.deck_title.configure(text=title)
         for entry in self._entries:
-            self.card_tree.insert("", "end", iid=entry.oracle_id, values=(entry.quantity, entry.name))
+            status = problems.get(entry.oracle_id) if problems is not None else None
+            legal = "" if problems is None else STATUS_LABELS.get(status, "Legal")
+            self.card_tree.insert("", "end", iid=entry.oracle_id,
+                                  values=(entry.quantity, entry.name, legal),
+                                  tags=("illegal",) if status else ())
         if selected and self.card_tree.exists(selected[0]):
             self.card_tree.selection_set(selected[0])
+
+    # None means there is nothing to check against yet: no format chosen, or
+    # the window has no card data loaded, signalled by on_check returning None
+    def _check(self, format_key):
+        if self._on_check is None or not format_key:
+            return None
+        found = self._on_check(format_key, self._entries)
+        if found is None:
+            return None
+        return {entry.oracle_id: status for entry, status in found}
 
     def _show_format(self, format_key):
         labels = dict(FORMATS)
