@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS decks (
     deck_id    INTEGER PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     name       TEXT NOT NULL,
-    created_at REAL NOT NULL
+    created_at REAL NOT NULL,
+    format     TEXT
 );
 -- one user cannot have two decks with the same name, but two users can
 CREATE UNIQUE INDEX IF NOT EXISTS idx_decks_owner_name ON decks(user_id, name COLLATE NOCASE);
@@ -64,6 +65,10 @@ class DeckRepository(ABC):
         """Remove the deck and every card in it."""
 
     @abstractmethod
+    def set_format(self, user_id, deck_id, format_name):
+        """Set the deck's format, or clear it with None."""
+
+    @abstractmethod
     def add_card(self, user_id, deck_id, card, quantity=1):
         """Add copies of a card, stacking onto any already in the deck."""
 
@@ -85,7 +90,13 @@ class SqliteDeckRepository(DeckRepository):
         # sqlite ignores REFERENCES unless this is switched on, per connection
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self):
+        columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(decks)")}
+        if "format" not in columns:
+            self.conn.execute("ALTER TABLE decks ADD COLUMN format TEXT")
 
     def create(self, user_id, name):
         name = (name or "").strip()
@@ -109,7 +120,7 @@ class SqliteDeckRepository(DeckRepository):
 
     def decks_for(self, user_id):
         rows = self.conn.execute(
-            """SELECT d.deck_id, d.user_id, d.name, d.created_at,
+            """SELECT d.deck_id, d.user_id, d.name, d.created_at, d.format,
                       COALESCE(SUM(c.quantity), 0) AS card_count
                FROM decks d
                LEFT JOIN deck_cards c ON c.deck_id = d.deck_id
@@ -120,13 +131,23 @@ class SqliteDeckRepository(DeckRepository):
         ).fetchall()
         return [
             Deck(row["deck_id"], row["user_id"], row["name"],
-                 row["created_at"], row["card_count"])
+                 row["created_at"], row["card_count"], row["format"])
             for row in rows
         ]
 
     def delete(self, user_id, deck_id):
         cursor = self.conn.execute(
             "DELETE FROM decks WHERE deck_id = ? AND user_id = ?", (deck_id, user_id)
+        )
+        self.conn.commit()
+        if cursor.rowcount == 0:
+            raise DeckNotFoundError("Deck not found.")
+
+    def set_format(self, user_id, deck_id, format_name):
+        format_name = (format_name or "").strip().lower() or None
+        cursor = self.conn.execute(
+            "UPDATE decks SET format = ? WHERE deck_id = ? AND user_id = ?",
+            (format_name, deck_id, user_id),
         )
         self.conn.commit()
         if cursor.rowcount == 0:
@@ -155,8 +176,6 @@ class SqliteDeckRepository(DeckRepository):
             raise DeckError("Quantity must be at least 1.")
         self._check_owner(user_id, deck_id)
 
-        # drop the row when this would take it to zero, otherwise count down;
-        # after a delete the update matches nothing, so order matters here
         self.conn.execute(
             "DELETE FROM deck_cards WHERE deck_id = ? AND oracle_id = ? AND quantity <= ?",
             (deck_id, oracle_id, quantity),

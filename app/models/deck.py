@@ -6,12 +6,13 @@ services/deck_repository.py, so these stay plain descriptions of stored rows.
 
 
 class Deck:
-    def __init__(self, deck_id, user_id, name, created_at, card_count=0):
+    def __init__(self, deck_id, user_id, name, created_at, card_count=0, format=None):
         self.deck_id = deck_id
         self.user_id = user_id
         self.name = name
         self.created_at = created_at
-        self.card_count = card_count  # total copies, so 4 Forests count as 4
+        self.card_count = card_count
+        self.format = format
 
     def __repr__(self):
         return f"Deck({self.name!r})"
