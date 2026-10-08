@@ -146,7 +146,14 @@ class MagicSearchApp:
         self.deck_detail_panel = DetailPanel(panes, on_add_to_deck=self._add_to_deck)
         panes.add(self.deck_panel, weight=4)
         panes.add(self.deck_detail_panel, weight=1)
+        panes.bind("<Map>", lambda _event: self._place_deck_sash(panes))
         return panes
+
+    # the decks tab is hidden at startup, so like the card tab its sash can only
+    # be placed once it has a real size: here, the first time the tab is shown
+    def _place_deck_sash(self, panes):
+        panes.unbind("<Map>")
+        self.root.after(50, lambda: self._place_sash(panes))
 
     # deck rows hold only an oracle_id, so the full card comes from the
     # repository, which is not there until the dataset finishes loading
