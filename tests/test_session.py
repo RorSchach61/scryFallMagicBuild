@@ -19,7 +19,7 @@ class SessionTest(unittest.TestCase):
 
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
-        self.users = SqliteUserRepository(Path(self.dir.name) / "users.db")
+        self.users = SqliteUserRepository(Path(self.dir.name) / "magic.db")
         self.addCleanup(self.users.close)
         self.users.create("willr", "Will R", PASSWORD, PASSWORD)
         self.session = Session(self.users)

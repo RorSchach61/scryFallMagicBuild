@@ -2,7 +2,7 @@
 # make blank cards, most used by other funct in program
 class Card:
     def __init__(self, name, mana_cost, type_line, multiverse_ids, power, toughness,
-                 colors, color_identity, image_url=None, oracle_id=None):
+                 colors, color_identity, image_url=None, oracle_id=None, oracle_text=None):
         self.oracle_id = oracle_id  # scryfall's stable id for the card, used by decks
         self.name = name
         self.mana_cost = mana_cost
@@ -13,6 +13,7 @@ class Card:
         self.colors = colors
         self.color_identity = color_identity
         self.image_url = image_url
+        self.oracle_text = oracle_text 
 
     @staticmethod
     def blank_Card():
@@ -20,7 +21,6 @@ class Card:
                     [], None, None,
                     [], [])
 
-    # creates card object from scryfall json, is passed dictionary from list in services(card_creator)
     # double faced cards keep mana cost, power and colors on the individual faces
     # rather than the top level, so the front face is used as a fallback
     @staticmethod
@@ -35,11 +35,16 @@ class Card:
         image_uris = field("image_uris") or {}
         image_url = image_uris.get("png") or image_uris.get("normal")
 
+        oracle_text = jsonData.get("oracle_text")
+        if oracle_text is None and faces:
+            oracle_text = "\n//\n".join(face.get("oracle_text", "") for face in faces)
+
         return Card(
             jsonData.get("name"), field("mana_cost"),
             field("type_line"), jsonData.get("multiverse_ids"),
             field("power"), field("toughness"), field("colors"),
-            jsonData.get("color_identity"), image_url, field("oracle_id")
+            jsonData.get("color_identity"), image_url, field("oracle_id"),
+            oracle_text
         )
 
     # creatures show power/toughness, everything else has neither
