@@ -2,7 +2,8 @@
 # make blank cards, most used by other funct in program
 class Card:
     def __init__(self, name, mana_cost, type_line, multiverse_ids, power, toughness,
-                 colors, color_identity, image_url=None, oracle_id=None, oracle_text=None):
+                 colors, color_identity, image_url=None, oracle_id=None, oracle_text=None,
+                 legalities=None):
         self.oracle_id = oracle_id  # scryfall's stable id for the card, used by decks
         self.name = name
         self.mana_cost = mana_cost
@@ -13,7 +14,10 @@ class Card:
         self.colors = colors
         self.color_identity = color_identity
         self.image_url = image_url
-        self.oracle_text = oracle_text 
+        self.oracle_text = oracle_text
+        # format -> "legal", "not_legal", "banned" or "restricted"; empty rather
+        # than None so a lookup on a card without data needs no None check
+        self.legalities = legalities or {}
 
     @staticmethod
     def blank_Card():
@@ -44,7 +48,7 @@ class Card:
             field("type_line"), jsonData.get("multiverse_ids"),
             field("power"), field("toughness"), field("colors"),
             jsonData.get("color_identity"), image_url, field("oracle_id"),
-            oracle_text
+            oracle_text, jsonData.get("legalities")
         )
 
     # creatures show power/toughness, everything else has neither
@@ -52,6 +56,11 @@ class Card:
         if self.power is None and self.toughness is None:
             return ""
         return f"{self.power}/{self.toughness}"
+
+    # restricted still counts: the card may be played, just as a single copy.
+    # unknown formats and cards without data are treated as not legal
+    def is_legal(self, format_name):
+        return self.legalities.get(format_name.lower()) in ("legal", "restricted")
 
     def __repr__(self):
         return f"Card({self.name!r})"
