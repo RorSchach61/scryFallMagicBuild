@@ -21,7 +21,7 @@ class UserRepositoryTest(unittest.TestCase):
 
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
-        self.repo = SqliteUserRepository(Path(self.dir.name) / "users.db")
+        self.repo = SqliteUserRepository(Path(self.dir.name) / "magic.db")
         self.addCleanup(self.repo.close)
 
     def create(self, username="willr", display_name="Will R", password=PASSWORD):
@@ -155,7 +155,7 @@ class PersistenceTest(unittest.TestCase):
 
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        path = Path(directory.name) / "users.db"
+        path = Path(directory.name) / "magic.db"
 
         first = SqliteUserRepository(path)
         first.create("willr", "Will R", PASSWORD, PASSWORD)

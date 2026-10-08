@@ -26,7 +26,7 @@ class DeckRepositoryTest(unittest.TestCase):
 
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
-        self.path = Path(self.dir.name) / "users.db"
+        self.path = Path(self.dir.name) / "magic.db"
 
         # decks reference users, so the users table has to exist first
         self.users = SqliteUserRepository(self.path)

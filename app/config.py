@@ -8,7 +8,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 ORACLE_CARDS_PATH = DATA_DIR / "oracle_cards.jsonl.gz"
-USER_DB_PATH = DATA_DIR / "users.db"
+USER_DB_PATH = DATA_DIR / "magic.db"
 
 # scryfall bulk type: one entry per unique card rather than one per printing
 BULK_DATASET_TYPE = "oracle_cards"
