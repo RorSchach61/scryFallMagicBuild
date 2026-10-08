@@ -3,10 +3,18 @@
 Kept in one module so nothing else hardcodes a location, and resolved from this
 file rather than the working directory so the app runs from anywhere.
 """
+import os
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
+
+# a --onefile exe runs from a temp folder deleted on exit, so its data has to
+# live in the user's profile instead or accounts and decks would not persist
+if getattr(sys, "frozen", False):
+    DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / "ScryfallSearch"
+else:
+    DATA_DIR = PROJECT_ROOT / "data"
 ORACLE_CARDS_PATH = DATA_DIR / "oracle_cards.jsonl.gz"
 USER_DB_PATH = DATA_DIR / "magic.db"
 
