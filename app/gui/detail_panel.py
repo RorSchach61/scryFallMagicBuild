@@ -8,6 +8,7 @@ from tkinter import ttk
 FIELDS = (
     ("Mana cost", lambda card: card.mana_cost or "N/A"),
     ("Type", lambda card: card.type_line or "N/A"),
+    ("Rules text", lambda card: card.oracle_text or "N/A"),
     ("Power/Toughness", lambda card: card.power_toughness() or "N/A"),
     ("Colors", lambda card: ", ".join(card.colors or []) or "Colorless"),
     ("Color identity", lambda card: ", ".join(card.color_identity or []) or "Colorless"),

@@ -87,6 +87,20 @@ class CreateFromJsonTest(unittest.TestCase):
         raw = {"name": "Reversible", "card_faces": [{"oracle_id": "front-id"}]}
         self.assertEqual(Card.create_from_json(raw).oracle_id, "front-id")
 
+    def test_reads_oracle_text(self):
+        raw = {"name": "Lightning Bolt", "oracle_text": "Deal 3 damage."}
+        self.assertEqual(Card.create_from_json(raw).oracle_text, "Deal 3 damage.")
+
+    def test_oracle_text_joins_every_face(self):
+        # unlike other fields, the back face's text must not be dropped
+        raw = {"name": "Fire // Ice", "card_faces": [
+            {"oracle_text": "Deal 2 damage."}, {"oracle_text": "Tap a permanent."}]}
+        self.assertEqual(Card.create_from_json(raw).oracle_text,
+                         "Deal 2 damage.\n//\nTap a permanent.")
+
+    def test_missing_oracle_text_is_none(self):
+        self.assertIsNone(Card.create_from_json({"name": "Forest"}).oracle_text)
+
 
 class PowerToughnessTest(unittest.TestCase):
 
