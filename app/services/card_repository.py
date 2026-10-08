@@ -19,6 +19,10 @@ class CardRepository(ABC):
         """Return cards whose name contains term, best matches first."""
 
     @abstractmethod
+    def find(self, oracle_id):
+        """Return the card with this oracle_id, or None."""
+
+    @abstractmethod
     def count(self):
         """Total cards available."""
 
@@ -27,6 +31,9 @@ class InMemoryCardRepository(CardRepository):
 
     def __init__(self, cards):
         self._cards = list(cards)
+        # decks store only oracle_ids, so lookups by id are indexed up front
+        # rather than scanning every card per lookup
+        self._by_oracle_id = {card.oracle_id: card for card in self._cards if card.oracle_id}
 
     # names are matched far more often than they are built, so the lowered
     # form is cached alongside each card rather than recomputed per search
@@ -46,6 +53,9 @@ class InMemoryCardRepository(CardRepository):
         found = [card for card in self._cards if term in card.name.lower()]
         found.sort(key=lambda card: cardSearch.sortKey(card.name, term))
         return found[:limit] if limit else found
+
+    def find(self, oracle_id):
+        return self._by_oracle_id.get(oracle_id)
 
     def count(self):
         return len(self._cards)
