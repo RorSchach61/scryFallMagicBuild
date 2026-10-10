@@ -33,8 +33,8 @@ class DeckPanel(ttk.Frame):
         self._build()
 
     def _build(self):
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=2)
+        self.columnconfigure(0, weight=1, minsize=270)
+        self.columnconfigure(1, weight=2, minsize=290)
         self.rowconfigure(1, weight=1)
 
         # left column: new-deck entry, the deck list, and delete
@@ -52,9 +52,10 @@ class DeckPanel(ttk.Frame):
         self.deck_tree.heading("name", text="Deck")
         self.deck_tree.heading("format", text="Format")
         self.deck_tree.heading("count", text="Cards")
-        self.deck_tree.column("name", width=180, anchor="w")
-        self.deck_tree.column("format", width=90, anchor="w")
-        self.deck_tree.column("count", width=60, anchor="e")
+        self.deck_tree.column("name", width=100, minwidth=60, anchor="w", stretch=True)
+        self.deck_tree.column("format", width=95, anchor="w", stretch=False)
+        self.deck_tree.column("count", width=55, anchor="e", stretch=False)
+        self._lock_columns(self.deck_tree)
         self.deck_tree.grid(row=1, column=0, sticky="nsew", padx=(0, 12), pady=(8, 0))
         self.deck_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_cards())
 
@@ -73,15 +74,18 @@ class DeckPanel(ttk.Frame):
         )
         self.format_choice.grid(row=0, column=1, sticky="e")
         self.format_choice.bind("<<ComboboxSelected>>", lambda _event: self._format_chosen())
+        self.legality_note = ttk.Label(header, text="", foreground=ERROR_COLOR)
+        self.legality_note.grid(row=1, column=0, columnspan=2, sticky="w")
 
         self.card_tree = ttk.Treeview(self, columns=("qty", "name", "legal"),
                                       show="headings", selectmode="browse")
         self.card_tree.heading("qty", text="Qty")
         self.card_tree.heading("name", text="Card")
         self.card_tree.heading("legal", text="Legal")
-        self.card_tree.column("qty", width=50, anchor="e")
-        self.card_tree.column("name", width=300, anchor="w")
-        self.card_tree.column("legal", width=80, anchor="w")
+        self.card_tree.column("qty", width=45, anchor="e", stretch=False)
+        self.card_tree.column("name", width=150, minwidth=100, anchor="w", stretch=True)
+        self.card_tree.column("legal", width=90, anchor="w", stretch=False)
+        self._lock_columns(self.card_tree)
         self.card_tree.tag_configure("illegal", foreground=ERROR_COLOR)
         self.card_tree.grid(row=1, column=1, sticky="nsew", pady=(8, 0))
         self.card_tree.bind("<<TreeviewSelect>>", lambda _event: self._card_selected())
@@ -91,6 +95,13 @@ class DeckPanel(ttk.Frame):
 
         self.message = ttk.Label(self, text="", wraplength=600, justify="left")
         self.message.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+
+    # only the name column stretches with the pane; blocking drags on the
+    # header separators keeps the user from pushing columns out of view
+    @staticmethod
+    def _lock_columns(tree):
+        tree.bind("<Button-1>", lambda event: "break"
+                  if tree.identify_region(event.x, event.y) == "separator" else None)
 
     # rows are keyed by oracle_id, so the selection is the id the window needs
     # to look the full card up; rebuilding the list also fires this with an
@@ -128,16 +139,18 @@ class DeckPanel(ttk.Frame):
         if deck is None:
             self._entries = []
             self.deck_title.configure(text="No deck selected")
+            self.legality_note.configure(text="")
             self.format_choice.set("")
             self.format_choice.configure(state="disabled")
             return
         self._show_format(deck.format)
         self._entries = self._on_cards(deck.deck_id)
         problems = self._check(deck.format)
-        title = f"{deck.name} ({deck.card_count} cards)"
+        self.deck_title.configure(text=f"{deck.name} ({deck.card_count} cards)")
+        note = ""
         if problems:
-            title += f", {len(problems)} illegal for {dict(FORMATS).get(deck.format, deck.format)}"
-        self.deck_title.configure(text=title)
+            note = f"{len(problems)} illegal for {dict(FORMATS).get(deck.format, deck.format)}"
+        self.legality_note.configure(text=note)
         for entry in self._entries:
             status = problems.get(entry.oracle_id) if problems is not None else None
             legal = "" if problems is None else STATUS_LABELS.get(status, "Legal")
