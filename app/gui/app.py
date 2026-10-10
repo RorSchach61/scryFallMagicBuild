@@ -18,6 +18,7 @@ from app.gui.detail_panel import DetailPanel
 from app.gui.login_window import LoginWindow
 from app.gui.search_panel import SearchPanel
 from app.gui.theme import apply_theme
+from app.services.deck_rules import illegal_entries
 
 POLL_MS = 100
 INITIAL_SASH = 660
@@ -140,6 +141,7 @@ class MagicSearchApp:
             on_remove=self._remove_from_deck,
             on_select=self._select_deck_card,
             on_set_format=self._set_deck_format,
+            on_check=self._check_deck,
         )
         self.deck_detail_panel = DetailPanel(panes, on_add_to_deck=self._add_to_deck)
         panes.add(self.deck_panel, weight=4)
@@ -157,6 +159,11 @@ class MagicSearchApp:
             self.status.set("That card is no longer in the card data")
             return
         self.deck_detail_panel.show(card)
+
+    def _check_deck(self, format_key, entries):
+        if self._repository is None:
+            return None
+        return illegal_entries(format_key, entries, self._repository.find)
 
     def _user_id(self):
         return self._session.user.user_id
@@ -246,6 +253,10 @@ class MagicSearchApp:
                     self._repository = payload
                     self.status.set(f"{payload.count():,} cards loaded")
                     self.search_panel.focus_entry()
+                    # the legality column is blank until card data exists, and
+                    # loading can finish while the user is signed out
+                    if self._session.is_authenticated():
+                        self.deck_panel.refresh()
                 elif kind == "error":
                     self.status.set(f"Could not load cards: {payload}")
         except queue.Empty:
