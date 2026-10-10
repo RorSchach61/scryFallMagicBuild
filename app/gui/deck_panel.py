@@ -7,14 +7,17 @@ refreshes it after any deck change, including ones made from the card pane.
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from app.config import FORMATS
+
 OK_COLOR = "#1a7f37"
 ERROR_COLOR = "#b3261e"
+NO_FORMAT = "No format"
 
 
 class DeckPanel(ttk.Frame):
 
     def __init__(self, parent, on_list, on_create, on_delete, on_cards, on_remove,
-                 on_select=None):
+                 on_select=None, on_set_format=None):
         super().__init__(parent, padding=(12, 12))
         self._on_list = on_list
         self._on_create = on_create
@@ -22,6 +25,7 @@ class DeckPanel(ttk.Frame):
         self._on_cards = on_cards
         self._on_remove = on_remove
         self._on_select = on_select
+        self._on_set_format = on_set_format
         self._decks = []
         self._entries = []
         self._build()
@@ -41,11 +45,13 @@ class DeckPanel(ttk.Frame):
         entry.bind("<Return>", lambda _event: self._create())
         ttk.Button(new_row, text="New deck", command=self._create).grid(row=0, column=1, padx=(6, 0))
 
-        self.deck_tree = ttk.Treeview(self, columns=("name", "count"), show="headings",
-                                      selectmode="browse")
+        self.deck_tree = ttk.Treeview(self, columns=("name", "format", "count"),
+                                      show="headings", selectmode="browse")
         self.deck_tree.heading("name", text="Deck")
+        self.deck_tree.heading("format", text="Format")
         self.deck_tree.heading("count", text="Cards")
         self.deck_tree.column("name", width=180, anchor="w")
+        self.deck_tree.column("format", width=90, anchor="w")
         self.deck_tree.column("count", width=60, anchor="e")
         self.deck_tree.grid(row=1, column=0, sticky="nsew", padx=(0, 12), pady=(8, 0))
         self.deck_tree.bind("<<TreeviewSelect>>", lambda _event: self._show_cards())
@@ -54,8 +60,17 @@ class DeckPanel(ttk.Frame):
             row=2, column=0, sticky="w", pady=(8, 0))
 
         # right column: what is in the selected deck
-        self.deck_title = ttk.Label(self, text="", font=("TkDefaultFont", 11, "bold"))
-        self.deck_title.grid(row=0, column=1, sticky="w")
+        header = ttk.Frame(self)
+        header.grid(row=0, column=1, sticky="ew")
+        header.columnconfigure(0, weight=1)
+        self.deck_title = ttk.Label(header, text="", font=("TkDefaultFont", 11, "bold"))
+        self.deck_title.grid(row=0, column=0, sticky="w")
+        self.format_choice = ttk.Combobox(
+            header, state="disabled", width=14,
+            values=[NO_FORMAT] + [label for _, label in FORMATS],
+        )
+        self.format_choice.grid(row=0, column=1, sticky="e")
+        self.format_choice.bind("<<ComboboxSelected>>", lambda _event: self._format_chosen())
 
         self.card_tree = ttk.Treeview(self, columns=("qty", "name"), show="headings",
                                       selectmode="browse")
@@ -84,10 +99,11 @@ class DeckPanel(ttk.Frame):
     def refresh(self):
         selected = self._selected_deck()
         self._decks = self._on_list()
+        labels = dict(FORMATS)
         self.deck_tree.delete(*self.deck_tree.get_children())
         for deck in self._decks:
             self.deck_tree.insert("", "end", iid=str(deck.deck_id),
-                                  values=(deck.name, deck.card_count))
+                                  values=(deck.name, labels.get(deck.format, ""), deck.card_count))
         if selected is not None and self.deck_tree.exists(str(selected.deck_id)):
             self.deck_tree.selection_set(str(selected.deck_id))
         self._show_cards()
@@ -107,13 +123,31 @@ class DeckPanel(ttk.Frame):
         if deck is None:
             self._entries = []
             self.deck_title.configure(text="No deck selected")
+            self.format_choice.set("")
+            self.format_choice.configure(state="disabled")
             return
         self.deck_title.configure(text=f"{deck.name} ({deck.card_count} cards)")
+        self._show_format(deck.format)
         self._entries = self._on_cards(deck.deck_id)
         for entry in self._entries:
             self.card_tree.insert("", "end", iid=entry.oracle_id, values=(entry.quantity, entry.name))
         if selected and self.card_tree.exists(selected[0]):
             self.card_tree.selection_set(selected[0])
+
+    def _show_format(self, format_key):
+        labels = dict(FORMATS)
+        self.format_choice.configure(
+            state="readonly" if self._on_set_format is not None else "disabled")
+        self.format_choice.set(labels.get(format_key, NO_FORMAT))
+
+    # index 0 is NO_FORMAT, so the rest line up with FORMATS shifted by one
+    def _format_chosen(self):
+        deck = self._selected_deck()
+        index = self.format_choice.current()
+        if deck is None or index < 0:
+            return
+        format_key = FORMATS[index - 1][0] if index > 0 else None
+        self._on_set_format(deck.deck_id, format_key)
 
     def _create(self):
         try:

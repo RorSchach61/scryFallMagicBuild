@@ -139,6 +139,7 @@ class MagicSearchApp:
             on_cards=lambda deck_id: self._deck_repo.cards_in(self._user_id(), deck_id),
             on_remove=self._remove_from_deck,
             on_select=self._select_deck_card,
+            on_set_format=self._set_deck_format,
         )
         self.deck_detail_panel = DetailPanel(panes, on_add_to_deck=self._add_to_deck)
         panes.add(self.deck_panel, weight=4)
@@ -179,6 +180,10 @@ class MagicSearchApp:
 
     def _remove_from_deck(self, deck_id, oracle_id):
         self._deck_repo.remove_card(self._user_id(), deck_id, oracle_id)
+        self._refresh_decks()
+
+    def _set_deck_format(self, deck_id, format_key):
+        self._deck_repo.set_format(self._user_id(), deck_id, format_key)
         self._refresh_decks()
 
     def _add_to_deck(self, deck, card):
