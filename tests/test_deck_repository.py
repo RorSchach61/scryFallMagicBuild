@@ -200,6 +200,70 @@ class OwnershipTest(DeckRepositoryTest):
         self.assertEqual(len(self.repo.decks_for(self.will)), 1)
 
 
+class FormatTest(DeckRepositoryTest):
+
+    def setUp(self):
+        super().setUp()
+        self.deck = self.repo.create(self.will, "Zombies")
+
+    def format_of(self, user_id):
+        return self.repo.decks_for(user_id)[0].format
+
+    def test_new_deck_has_no_format(self):
+        self.assertIsNone(self.format_of(self.will))
+
+    def test_set_format(self):
+        self.repo.set_format(self.will, self.deck.deck_id, "modern")
+        self.assertEqual(self.format_of(self.will), "modern")
+
+    def test_format_is_normalized(self):
+        self.repo.set_format(self.will, self.deck.deck_id, "  Modern ")
+        self.assertEqual(self.format_of(self.will), "modern")
+
+    def test_none_clears_the_format(self):
+        self.repo.set_format(self.will, self.deck.deck_id, "modern")
+        self.repo.set_format(self.will, self.deck.deck_id, None)
+        self.assertIsNone(self.format_of(self.will))
+
+    def test_cannot_set_another_users_format(self):
+        with self.assertRaises(DeckNotFoundError):
+            self.repo.set_format(self.dana, self.deck.deck_id, "modern")
+        self.assertIsNone(self.format_of(self.will))
+
+
+class MigrationTest(unittest.TestCase):
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.path = Path(directory.name) / "magic.db"
+
+    def test_adds_format_to_a_database_made_before_it(self):
+        users = SqliteUserRepository(self.path)
+        self.addCleanup(users.close)
+        users.conn.execute(
+            "CREATE TABLE decks (deck_id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL,"
+            " name TEXT NOT NULL, created_at REAL NOT NULL)"
+        )
+        users.conn.execute(
+            "INSERT INTO users (username, password_salt, password_hash, created_at)"
+            " VALUES ('willr', 's', 'h', 0)"
+        )
+        users.conn.execute("INSERT INTO decks (user_id, name, created_at) VALUES (1, 'Old', 0)")
+        users.conn.commit()
+
+        repo = SqliteDeckRepository(self.path)
+        self.addCleanup(repo.close)
+        [deck] = repo.decks_for(1)
+        self.assertEqual(deck.name, "Old")
+        self.assertIsNone(deck.format)
+
+    def test_running_twice_is_harmless(self):
+        SqliteUserRepository(self.path).close()
+        SqliteDeckRepository(self.path).close()
+        SqliteDeckRepository(self.path).close()
+
+
 class PersistenceTest(DeckRepositoryTest):
 
     def test_decks_survive_reopening(self):

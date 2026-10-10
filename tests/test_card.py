@@ -101,6 +101,42 @@ class CreateFromJsonTest(unittest.TestCase):
     def test_missing_oracle_text_is_none(self):
         self.assertIsNone(Card.create_from_json({"name": "Forest"}).oracle_text)
 
+    def test_reads_legalities(self):
+        raw = {"name": "Forest", "legalities": {"modern": "legal"}}
+        self.assertEqual(Card.create_from_json(raw).legalities, {"modern": "legal"})
+
+    def test_missing_legalities_is_empty(self):
+        self.assertEqual(Card.create_from_json({"name": "Forest"}).legalities, {})
+
+
+class IsLegalTest(unittest.TestCase):
+
+    def setUp(self):
+        self.card = Card.create_from_json({"name": "Mana Crypt", "legalities": {
+            "legacy": "legal", "vintage": "restricted",
+            "commander": "banned", "standard": "not_legal"}})
+
+    def test_legal_is_legal(self):
+        self.assertTrue(self.card.is_legal("legacy"))
+
+    def test_restricted_counts_as_legal(self):
+        self.assertTrue(self.card.is_legal("vintage"))
+
+    def test_banned_is_not_legal(self):
+        self.assertFalse(self.card.is_legal("commander"))
+
+    def test_not_legal_is_not_legal(self):
+        self.assertFalse(self.card.is_legal("standard"))
+
+    def test_unknown_format_is_not_legal(self):
+        self.assertFalse(self.card.is_legal("madeup"))
+
+    def test_format_name_is_case_insensitive(self):
+        self.assertTrue(self.card.is_legal("Legacy"))
+
+    def test_card_without_data_is_not_legal(self):
+        self.assertFalse(Card.create_from_json({"name": "Forest"}).is_legal("modern"))
+
 
 class PowerToughnessTest(unittest.TestCase):
 
