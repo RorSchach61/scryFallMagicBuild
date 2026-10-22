@@ -10,7 +10,6 @@ from tkinter import ttk
 OK_COLOR = "#1a7f37"
 ERROR_COLOR = "#b3261e"
 
-
 class UserPanel(ttk.Frame):
 
     def __init__(self, parent, on_create):

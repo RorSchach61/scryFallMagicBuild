@@ -67,6 +67,10 @@ class SearchPanel(ttk.Frame):
         self._pending = None
         self.show_results(self._on_search(self.query.get(), RESULT_LIMIT))
 
+    # runs the current search again, e.g. once new card data has loaded
+    def refresh(self):
+        self._run_search()
+
     def show_results(self, cards):
         self._results = cards
         self.tree.delete(*self.tree.get_children())

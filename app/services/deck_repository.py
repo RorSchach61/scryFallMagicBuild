@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS deck_cards (
 );
 """
 
-
 class DeckError(ValueError):
     """Raised when a deck change cannot be made."""
 
@@ -79,7 +78,6 @@ class DeckRepository(ABC):
     @abstractmethod
     def cards_in(self, user_id, deck_id):
         """The deck's entries, alphabetical."""
-
 
 class SqliteDeckRepository(DeckRepository):
 

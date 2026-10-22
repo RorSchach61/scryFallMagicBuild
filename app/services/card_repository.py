@@ -11,7 +11,6 @@ from app.models.card import Card
 from app.services.dataset import read_cards
 from app.services.searchCards import cardSearch
 
-
 class CardRepository(ABC):
 
     @abstractmethod

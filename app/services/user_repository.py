@@ -25,10 +25,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username COLLATE NOCASE);
 """
 
-
 class DuplicateUserError(ValidationError):
     """Raised when a username is already taken."""
-
 
 class UserRepository(ABC):
 
@@ -47,7 +45,6 @@ class UserRepository(ABC):
     @abstractmethod
     def authenticate(self, username, password):
         """Return the user when the password is correct, otherwise None."""
-
 
 class SqliteUserRepository(UserRepository):
 

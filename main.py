@@ -7,10 +7,11 @@ from app.services.session import Session
 from app.services.user_repository import SqliteUserRepository
 
 
-# runs on the window's loading thread, so a slow download never delays the window
-def load_cards(progress=None):
-    download_oracle_cards()
-    return InMemoryCardRepository.load(progress)
+# runs on the window's loading thread, so a slow download never delays the window.
+# returns the download's outcome alongside the cards so the window can show it
+def load_cards(progress=None, report=None, force=False):
+    result = download_oracle_cards(force=force, report=report)
+    return InMemoryCardRepository.load(progress), result
 
 
 def main():

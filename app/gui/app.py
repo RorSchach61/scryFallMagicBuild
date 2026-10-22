@@ -8,8 +8,10 @@ from the thread that created them.
 The window stays hidden until the sign-in gate succeeds, and hides again on
 sign out rather than tearing down, so the loaded dataset survives.
 """
+import math
 import queue
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk
 
@@ -19,11 +21,13 @@ from app.gui.login_window import LoginWindow
 from app.gui.search_panel import SearchPanel
 from app.gui.theme import apply_theme
 from app.services.deck_rules import illegal_entries
+from app.services.json_downloader import cooldown_remaining
 
 POLL_MS = 100
 INITIAL_SASH = 660
 MOON = "\U0001F319"  # shown in light mode: click to switch to dark
 SUN = "☀"       # shown in dark mode: click to switch to light
+DATA_NOTE = "Card data comes from Scryfall and updates about once a day."
 
 
 class MagicSearchApp:
@@ -38,7 +42,8 @@ class MagicSearchApp:
         self._session = session
         self._repository = None
         self._events = queue.Queue()
-        self._loading_started = False
+        self._loading = False
+        self._last_refresh = None  # when the refresh button last started a download
         self._dark_mode = False
 
         self.root = tk.Tk()
@@ -54,9 +59,13 @@ class MagicSearchApp:
 
         top_bar = ttk.Frame(self.root)
         top_bar.grid(row=0, column=0, sticky="ew")
-        top_bar.columnconfigure(0, weight=1)
+        top_bar.columnconfigure(1, weight=1)
+        self.refresh_button = ttk.Button(top_bar, text="Refresh card data",
+                                         command=self._refresh_cards, state="disabled")
+        self.refresh_button.grid(row=0, column=0, sticky="w", padx=6, pady=4)
+        ttk.Label(top_bar, text=DATA_NOTE).grid(row=0, column=1, sticky="w")
         self.theme_button = ttk.Button(top_bar, text=MOON, width=3, command=self._toggle_theme)
-        self.theme_button.grid(row=0, column=1, sticky="e", padx=6, pady=4)
+        self.theme_button.grid(row=0, column=2, sticky="e", padx=6, pady=4)
 
         notebook = ttk.Notebook(self.root)
         notebook.grid(row=1, column=0, sticky="nsew")
@@ -233,22 +242,37 @@ class MagicSearchApp:
 
     # -- dataset loading ---------------------------------------------------
 
-    def _load_in_background(self):
-        if self._loading_started:
+    # force downloads a new copy regardless of age; used by the refresh button
+    def _load_in_background(self, force=False):
+        if self._loading:
             return
-        self._loading_started = True
+        self._loading = True
+        self.refresh_button.configure(state="disabled")
 
         def work():
             try:
-                repository = self._load_repository(
-                    progress=lambda n: self._events.put(("progress", n))
+                loaded = self._load_repository(
+                    progress=lambda n: self._events.put(("progress", n)),
+                    report=lambda message: self._events.put(("status", message)),
+                    force=force,
                 )
-                self._events.put(("ready", repository))
+                self._events.put(("ready", loaded))
             except Exception as exc:  # surfaced in the status bar
                 self._events.put(("error", exc))
 
         threading.Thread(target=work, daemon=True).start()
-        self.root.after(POLL_MS, self._drain_events)
+
+    # the cooldown keeps repeated clicks from downloading the full file again
+    # and again; scryfall only publishes new data about once a day anyway
+    def _refresh_cards(self):
+        remaining = cooldown_remaining(self._last_refresh)
+        if remaining:
+            self.status.set(f"Card data was just refreshed, try again in "
+                            f"{math.ceil(remaining / 60)} min")
+            return
+        self._last_refresh = time.time()
+        self.status.set("Checking Scryfall for card data…")
+        self._load_in_background(force=True)
 
     def _drain_events(self):
         try:
@@ -256,15 +280,26 @@ class MagicSearchApp:
                 kind, payload = self._events.get_nowait()
                 if kind == "progress":
                     self.status.set(f"Loading cards… {payload:,} parsed")
+                elif kind == "status":
+                    self.status.set(payload)
                 elif kind == "ready":
-                    self._repository = payload
-                    self.status.set(f"{payload.count():,} cards loaded")
+                    repository, download = payload
+                    self._repository = repository
+                    self._loading = False
+                    self.refresh_button.configure(state="normal")
+                    # re-run whatever is in the search box against the new
+                    # cards, which also covers anything typed while loading
+                    self.search_panel.refresh()
+                    loaded = f"{repository.count():,} cards loaded"
+                    self.status.set(f"{loaded}. {download.message}" if download.message else loaded)
                     self.search_panel.focus_entry()
                     # the legality column is blank until card data exists, and
                     # loading can finish while the user is signed out
                     if self._session.is_authenticated():
                         self.deck_panel.refresh()
                 elif kind == "error":
+                    self._loading = False
+                    self.refresh_button.configure(state="normal")
                     self.status.set(f"Could not load cards: {payload}")
         except queue.Empty:
             pass
@@ -276,5 +311,6 @@ class MagicSearchApp:
             return
         self._on_signed_in()
         self._show_window()
+        self.root.after(POLL_MS, self._drain_events)
         self._load_in_background()
         self.root.mainloop()

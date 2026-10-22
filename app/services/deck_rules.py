@@ -4,7 +4,6 @@ Pure functions over deck entries and a card lookup, with no storage or widgets,
 so the rules can be tested on their own and reused by any caller.
 """
 
-
 # cards no longer in the dataset are reported as "unknown" rather than skipped,
 # since their legality cannot be confirmed
 def illegal_entries(format_key, entries, find):
