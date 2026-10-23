@@ -11,11 +11,8 @@ USERNAME_MIN, USERNAME_MAX = 3, 32
 DISPLAY_NAME_MAX = 64
 PASSWORD_MIN = 8
 
-
 class ValidationError(ValueError):
     """Raised when a user cannot be created as described."""
-
-
 def check_username(username):
     username = (username or "").strip()
     if not username:
@@ -28,12 +25,10 @@ def check_username(username):
         return "Username may only contain letters, numbers, underscore and hyphen."
     return None
 
-
 def check_display_name(display_name):
     if display_name and len(display_name.strip()) > DISPLAY_NAME_MAX:
         return f"Display name must be at most {DISPLAY_NAME_MAX} characters."
     return None
-
 
 def check_password(password, confirmation=None):
     if not password:
@@ -43,7 +38,6 @@ def check_password(password, confirmation=None):
     if confirmation is not None and password != confirmation:
         return "Passwords do not match."
     return None
-
 
 # returns the first problem found, or None when the input is usable
 def check_new_user(username, display_name, password, confirmation=None):
