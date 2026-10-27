@@ -5,13 +5,14 @@ connection or an error page can never leave the app with unreadable card data.
 Every outcome is returned as a DownloadResult rather than printed, since the
 packaged app has no console to print to.
 """
+
 import gzip
 import json
 import time
 import urllib.request
 
 from app.api.scryfall_client import ScryfallClient
-from app.config import BULK_DATASET_TYPE, DATA_DIR, ORACLE_CARDS_PATH, TWELVE_HOURS
+from app.config import BULK_DATASET_TYPE, ORACLE_CARDS_PATH, TWELVE_HOURS
 
 # a manual refresh downloads ~25 MB, so repeated clicks are held off for a while
 REFRESH_COOLDOWN = 5 * 60
@@ -71,6 +72,49 @@ def validate_download(path, expected_size=None):
         raise InvalidDownloadError(f"file is not readable ({exc})") from exc
 
 
+def _find_bulk_entry(client):
+    return next((item for item in client.get_json_data()["data"]
+                 if item["type"] == BULK_DATASET_TYPE), None)
+
+
+def _is_current(updated_at):
+    return ORACLE_CARDS_PATH.exists() and bool(updated_at) and updated_at == _stored_updated_at()
+
+
+# after a successful replace the .part is already gone, so the cleanup only
+# matters when something failed along the way
+def _download_file(url, headers, dest):
+    tmp = dest.with_suffix(".part")
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        request = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(request, timeout=30) as response, open(tmp, "wb") as out:
+            expected_size = int(response.headers.get("Content-Length") or 0)
+            while chunk := response.read(1024 * 1024):
+                out.write(chunk)
+        validate_download(tmp, expected_size)
+        tmp.replace(dest)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _refresh_from_scryfall(force, report):
+    client = ScryfallClient()
+    entry = _find_bulk_entry(client)
+    if entry is None:
+        return DownloadResult(FAILED, "Could not refresh card data: Scryfall did not list it")
+    updated_at = entry.get("updated_at")
+    if not force and _is_current(updated_at):
+        ORACLE_CARDS_PATH.touch()  # restarts the 12 hour wait before asking again
+        return DownloadResult(UP_TO_DATE)
+    if report:
+        report("Downloading card data from Scryfall…")
+    _download_file(entry["jsonl_download_uri"], client.headers, ORACLE_CARDS_PATH)
+    if updated_at:
+        _store_updated_at(updated_at)
+    return DownloadResult(DOWNLOADED, "Card data updated from Scryfall")
+
+
 # Checks if download has happened in recent 12 hours, since scryfall updates bulk
 # card data about once a day. force skips that check for a manual refresh, and
 # report is told before the large download starts so the window can say so
@@ -78,37 +122,8 @@ def download_oracle_cards(force=False, report=None):
     if not force and ORACLE_CARDS_PATH.exists():
         if time.time() - ORACLE_CARDS_PATH.stat().st_mtime < TWELVE_HOURS:
             return DownloadResult(SKIPPED)
-
-    # a failed refresh is not fatal: an older file still works, and a missing
-    # one is reported by dataset.py once the window is up
-    tmp = ORACLE_CARDS_PATH.with_suffix(".part")
     try:
-        client = ScryfallClient()
-        entry = next((item for item in client.get_json_data()["data"]
-                      if item["type"] == BULK_DATASET_TYPE), None)
-        if entry is None:
-            return DownloadResult(FAILED, "Could not refresh card data: Scryfall did not list it")
-
-        updated_at = entry.get("updated_at")
-        if not force and ORACLE_CARDS_PATH.exists() and updated_at \
-                and updated_at == _stored_updated_at():
-            ORACLE_CARDS_PATH.touch()  # restarts the 12 hour wait before asking again
-            return DownloadResult(UP_TO_DATE)
-
-        if report:
-            report("Downloading card data from Scryfall…")
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        request = urllib.request.Request(entry["jsonl_download_uri"], headers=client.headers)
-        with urllib.request.urlopen(request, timeout=30) as response, open(tmp, "wb") as out:
-            expected_size = int(response.headers.get("Content-Length") or 0)
-            while chunk := response.read(1024 * 1024):
-                out.write(chunk)
-        validate_download(tmp, expected_size)
-        tmp.replace(ORACLE_CARDS_PATH)
-        if updated_at:
-            _store_updated_at(updated_at)
-        return DownloadResult(DOWNLOADED, "Card data updated from Scryfall")
+        return _refresh_from_scryfall(force, report)
     except (OSError, KeyError, ValueError) as exc:
-        tmp.unlink(missing_ok=True)
         fallback = "using the saved copy" if ORACLE_CARDS_PATH.exists() else "no saved copy yet"
         return DownloadResult(FAILED, f"Could not refresh card data, {fallback} ({exc})")

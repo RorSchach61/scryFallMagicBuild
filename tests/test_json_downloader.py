@@ -38,12 +38,10 @@ class DownloaderTestCase(unittest.TestCase):
         # is never touched and the freshness check never skips the download
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
-        data_dir = Path(self.dir.name)
-        self.path = data_dir / "oracle_cards.jsonl.gz"
-        for name, value in (("DATA_DIR", data_dir), ("ORACLE_CARDS_PATH", self.path)):
-            patcher = mock.patch(f"app.services.json_downloader.{name}", value)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        self.path = Path(self.dir.name) / "oracle_cards.jsonl.gz"
+        patcher = mock.patch("app.services.json_downloader.ORACLE_CARDS_PATH", self.path)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         client = mock.patch("app.services.json_downloader.ScryfallClient")
         self.client = client.start().return_value
