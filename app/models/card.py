@@ -3,7 +3,7 @@
 class Card:
     def __init__(self, name, mana_cost, type_line, multiverse_ids, power, toughness,
                  colors, color_identity, image_url=None, oracle_id=None, oracle_text=None,
-                 legalities=None):
+                 legalities=None, cmc=None):
         self.oracle_id = oracle_id  # scryfall's stable id for the card, used by decks
         self.name = name
         self.mana_cost = mana_cost
@@ -15,6 +15,7 @@ class Card:
         self.color_identity = color_identity
         self.image_url = image_url
         self.oracle_text = oracle_text
+        self.cmc = cmc
         # format -> "legal", "not_legal", "banned" or "restricted"; empty rather
         # than None so a lookup on a card without data needs no None check
         self.legalities = legalities or {}
@@ -48,7 +49,7 @@ class Card:
             field("type_line"), jsonData.get("multiverse_ids"),
             field("power"), field("toughness"), field("colors"),
             jsonData.get("color_identity"), image_url, field("oracle_id"),
-            oracle_text, jsonData.get("legalities")
+            oracle_text, jsonData.get("legalities"), field("cmc")
         )
 
     # creatures show power/toughness, everything else has neither

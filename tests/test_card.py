@@ -108,6 +108,23 @@ class CreateFromJsonTest(unittest.TestCase):
     def test_missing_legalities_is_empty(self):
         self.assertEqual(Card.create_from_json({"name": "Forest"}).legalities, {})
 
+    def test_reads_cmc(self):
+        raw = {"name": "Forest Bear", "cmc": 2.0}
+        self.assertEqual(Card.create_from_json(raw).cmc, 2.0)
+
+    def test_zero_cmc_is_not_replaced_by_a_face(self):
+        # 0.0 is a real value for lands; only a missing cmc falls back
+        raw = {"name": "Forest", "cmc": 0.0, "card_faces": [{"cmc": 3.0}]}
+        self.assertEqual(Card.create_from_json(raw).cmc, 0.0)
+
+    def test_cmc_falls_back_to_the_front_face(self):
+        # reversible cards keep cmc on the faces, which may differ
+        raw = {"name": "A // B", "card_faces": [{"cmc": 2.0}, {"cmc": 5.0}]}
+        self.assertEqual(Card.create_from_json(raw).cmc, 2.0)
+
+    def test_missing_cmc_is_none(self):
+        self.assertIsNone(Card.create_from_json({"name": "Forest"}).cmc)
+
 
 class IsLegalTest(unittest.TestCase):
 
