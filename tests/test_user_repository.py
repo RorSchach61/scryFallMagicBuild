@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -89,6 +90,15 @@ class StorageTest(UserRepositoryTest):
         rows = self.repo.conn.execute("SELECT password_salt, password_hash FROM users").fetchall()
         self.assertNotEqual(rows[0]["password_salt"], rows[1]["password_salt"])
         self.assertNotEqual(rows[0]["password_hash"], rows[1]["password_hash"])
+
+    def test_renaming_to_a_taken_username_is_refused(self):
+        # the unique index guards renames too, so an update method must turn
+        # this into a DuplicateUserError the way create does
+        self.create(username="willr")
+        self.create(username="dana")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.repo.conn.execute(
+                "UPDATE users SET username = ? WHERE username = ?", ("WILLR", "dana"))
 
 
 class FindTest(UserRepositoryTest):

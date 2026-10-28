@@ -6,11 +6,11 @@ can be swapped without touching the interface above it.
 import sqlite3
 import time
 from abc import ABC, abstractmethod
-
 from app.config import USER_DB_PATH
 from app.models.user import User
 from app.services import security
-from app.services.user_validation import ValidationError, check_new_user
+from app.services.user_validation import (
+    ValidationError, check_display_name, check_new_user, check_username)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -33,6 +33,10 @@ class UserRepository(ABC):
     @abstractmethod
     def create(self, username, display_name, password, confirmation=None):
         """Validate and store a new user, returning it."""
+
+    @abstractmethod
+    def update(self, user_id, username, display_name):
+        """Validate and change a user's names, returning the user, or None."""
 
     @abstractmethod
     def find(self, username):
@@ -76,6 +80,25 @@ class SqliteUserRepository(UserRepository):
             raise DuplicateUserError(f"The username {username!r} is already taken.")
         self.conn.commit()
         return User(username, display_name, salt, digest, created_at, cursor.lastrowid)
+
+    # the password is left alone here; changing it needs the current one checked
+    def update(self, user_id, username, display_name):
+        problem = check_username(username) or check_display_name(display_name)
+        if problem:
+            raise ValidationError(problem)
+
+        username = username.strip()
+        display_name = (display_name or "").strip() or None
+        try:
+            self.conn.execute(
+                "UPDATE users SET username = ?, display_name = ? WHERE user_id = ?",
+                (username, display_name, user_id),
+            )
+        except sqlite3.IntegrityError:
+            raise DuplicateUserError(f"The username {username!r} is already taken.")
+        self.conn.commit()
+        row = self.conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        return self._to_user(row) if row else None
 
     def find(self, username):
         row = self.conn.execute(
