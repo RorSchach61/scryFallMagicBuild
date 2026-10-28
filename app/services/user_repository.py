@@ -28,6 +28,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username COLLATE N
 class DuplicateUserError(ValidationError):
     """Raised when a username is already taken."""
 
+# lookups answer None for a missing user; changes raise this instead, since
+# changing a user that does not exist means the caller has a stale id
+class UserNotFoundError(ValidationError):
+    """Raised when no user has the given id."""
+
 class UserRepository(ABC):
 
     @abstractmethod
@@ -36,7 +41,7 @@ class UserRepository(ABC):
 
     @abstractmethod
     def update(self, user_id, username, display_name):
-        """Validate and change a user's names, returning the user, or None."""
+        """Validate and change a user's names, returning the updated user."""
 
     @abstractmethod
     def find(self, username):
@@ -49,6 +54,10 @@ class UserRepository(ABC):
     @abstractmethod
     def authenticate(self, username, password):
         """Return the user when the password is correct, otherwise None."""
+
+    @abstractmethod
+    def delete(self, user_id):
+        """Remove the user and, by cascade, their decks."""
 
 class SqliteUserRepository(UserRepository):
 
@@ -90,15 +99,25 @@ class SqliteUserRepository(UserRepository):
         username = username.strip()
         display_name = (display_name or "").strip() or None
         try:
-            self.conn.execute(
+            cursor = self.conn.execute(
                 "UPDATE users SET username = ?, display_name = ? WHERE user_id = ?",
                 (username, display_name, user_id),
             )
         except sqlite3.IntegrityError:
             raise DuplicateUserError(f"The username {username!r} is already taken.")
+        if cursor.rowcount == 0:
+            raise UserNotFoundError("User not found.")
         self.conn.commit()
         row = self.conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
-        return self._to_user(row) if row else None
+        return self._to_user(row)
+
+    # the database removes the user's decks and their cards through
+    # ON DELETE CASCADE, which needs the foreign_keys pragma set in __init__
+    def delete(self, user_id):
+        cursor = self.conn.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+        self.conn.commit()
+        if cursor.rowcount == 0:
+            raise UserNotFoundError("User not found.")
 
     def find(self, username):
         row = self.conn.execute(
