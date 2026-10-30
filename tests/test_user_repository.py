@@ -249,6 +249,21 @@ class FindTest(UserRepositoryTest):
         self.assertIsNone(self.repo.find("ghost"))
 
 
+class GetTest(UserRepositoryTest):
+
+    def test_gets_an_existing_user(self):
+        user = self.create()
+        self.assertEqual(self.repo.get(user.user_id).username, "willr")
+
+    def test_unknown_id_is_none(self):
+        self.assertIsNone(self.repo.get(999))
+
+    def test_deleted_user_is_none(self):
+        user = self.create()
+        self.repo.delete(user.user_id)
+        self.assertIsNone(self.repo.get(user.user_id))
+
+
 class AllUsersTest(UserRepositoryTest):
 
     def test_empty_to_start(self):
