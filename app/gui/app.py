@@ -15,6 +15,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
+from app.gui.account_window import AccountWindow
 from app.gui.deck_panel import DeckPanel
 from app.gui.detail_panel import DetailPanel
 from app.gui.login_window import LoginWindow
@@ -82,7 +83,9 @@ class MagicSearchApp:
 
         self.identity = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.identity, padding=(10, 3)).grid(row=0, column=1)
-        ttk.Button(bar, text="Sign out", command=self._sign_out).grid(row=0, column=2, padx=(0, 4))
+        ttk.Button(bar, text="Edit account", command=self._edit_account).grid(
+            row=0, column=2, padx=(0, 4))
+        ttk.Button(bar, text="Sign out", command=self._sign_out).grid(row=0, column=3, padx=(0, 4))
 
         self._apply_theme()
 
@@ -228,8 +231,11 @@ class MagicSearchApp:
     # runs after every successful sign in, so a second user never sees the
     # previous user's decks
     def _on_signed_in(self):
-        self.identity.set(f"Signed in as {self._session.label()}")
+        self._show_identity()
         self._refresh_decks()
+
+    def _show_identity(self):
+        self.identity.set(f"Signed in as {self._session.label()}")
 
     def _sign_out(self):
         self._session.logout()
@@ -239,6 +245,26 @@ class MagicSearchApp:
             self._show_window()
         else:
             self.root.destroy()
+
+    # -- account -----------------------------------------------------------
+
+    def _edit_account(self):
+        AccountWindow(self.root, self._session.user, on_save=self._save_account,
+                      on_check_password=self._check_password, on_delete=self._delete_account)
+
+    def _save_account(self, username, display_name):
+        user = self._users.update(self._user_id(), username, display_name)
+        self._show_identity()
+        return user
+
+    def _check_password(self, password):
+        return self._users.authenticate(self._session.user.username, password) is not None
+
+    # signing out straight away hides the window, so no deck action can run
+    # with a user that no longer exists
+    def _delete_account(self):
+        self._users.delete(self._user_id())
+        self._sign_out()
 
     # -- dataset loading ---------------------------------------------------
 
