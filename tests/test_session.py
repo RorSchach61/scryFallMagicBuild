@@ -95,5 +95,36 @@ class LogoutTest(SessionTest):
         self.assertIsNotNone(self.session.login("willr", PASSWORD))
 
 
+class ReadsFreshTest(SessionTest):
+
+    def setUp(self):
+        super().setUp()
+        self.signed_in = self.session.login("willr", PASSWORD)
+
+    def test_rename_shows_in_the_user(self):
+        self.users.update(self.signed_in.user_id, "dana", "Will R")
+        self.assertEqual(self.session.user.username, "dana")
+
+    def test_display_name_change_shows_in_the_label(self):
+        self.users.update(self.signed_in.user_id, "willr", "Will Renfro")
+        self.assertEqual(self.session.label(), "Will Renfro")
+
+    def test_deleted_user_reads_as_signed_out(self):
+        self.users.delete(self.signed_in.user_id)
+        self.assertFalse(self.session.is_authenticated())
+        self.assertIsNone(self.session.user)
+        self.assertIsNone(self.session.label())
+
+    def test_deleting_someone_else_leaves_the_session_alone(self):
+        dana = self.users.create("dana", "Dana", PASSWORD, PASSWORD)
+        self.users.delete(dana.user_id)
+        self.assertEqual(self.session.user.username, "willr")
+
+    def test_a_deleted_user_cannot_sign_back_in(self):
+        self.users.delete(self.signed_in.user_id)
+        self.assertIsNone(self.session.login("willr", PASSWORD))
+        self.assertFalse(self.session.is_authenticated())
+
+
 if __name__ == "__main__":
     unittest.main()

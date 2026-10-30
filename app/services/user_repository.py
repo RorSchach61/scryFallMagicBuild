@@ -48,6 +48,10 @@ class UserRepository(ABC):
         """Return the matching user, or None."""
 
     @abstractmethod
+    def get(self, user_id):
+        """Return the user with this id, or None."""
+
+    @abstractmethod
     def all_users(self):
         """Every user, oldest first."""
 
@@ -123,6 +127,10 @@ class SqliteUserRepository(UserRepository):
         row = self.conn.execute(
             "SELECT * FROM users WHERE username = ? COLLATE NOCASE", ((username or "").strip(),)
         ).fetchone()
+        return self._to_user(row) if row else None
+
+    def get(self, user_id):
+        row = self.conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
         return self._to_user(row) if row else None
 
     def all_users(self):
