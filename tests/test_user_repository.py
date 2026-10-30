@@ -4,8 +4,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from app.models.card import Card
 from app.services import security
-from app.services.user_repository import DuplicateUserError, SqliteUserRepository
+from app.services.deck_repository import SqliteDeckRepository
+from app.services.user_repository import (
+    DuplicateUserError, SqliteUserRepository, UserNotFoundError)
 from app.services.user_validation import ValidationError
 
 PASSWORD = "hunter2hunter2"
@@ -75,6 +78,133 @@ class CreateTest(UserRepositoryTest):
     def test_rejects_mismatched_confirmation(self):
         with self.assertRaises(ValidationError):
             self.repo.create("willr", "", PASSWORD, "somethingelse")
+
+
+class UpdateTest(UserRepositoryTest):
+
+    def test_returns_the_changed_user(self):
+        user = self.create()
+        updated = self.repo.update(user.user_id, "dana", "Dana")
+        self.assertEqual(updated.user_id, user.user_id)
+        self.assertEqual(updated.username, "dana")
+        self.assertEqual(updated.display_name, "Dana")
+
+    def test_change_is_stored(self):
+        user = self.create()
+        self.repo.update(user.user_id, "dana", "Dana")
+        self.assertIsNone(self.repo.find("willr"))
+        self.assertEqual(self.repo.find("dana").user_id, user.user_id)
+
+    def test_strips_surrounding_whitespace(self):
+        user = self.create()
+        updated = self.repo.update(user.user_id, "  dana  ", "  Dana  ")
+        self.assertEqual(updated.username, "dana")
+        self.assertEqual(updated.display_name, "Dana")
+
+    def test_blank_display_name_is_stored_as_none(self):
+        user = self.create()
+        self.assertIsNone(self.repo.update(user.user_id, "willr", "").display_name)
+
+    def test_rejects_a_taken_username(self):
+        self.create(username="willr")
+        dana = self.create(username="dana")
+        with self.assertRaises(DuplicateUserError):
+            self.repo.update(dana.user_id, "willr", "")
+
+    def test_taken_check_ignores_case(self):
+        self.create(username="willr")
+        dana = self.create(username="dana")
+        with self.assertRaises(DuplicateUserError):
+            self.repo.update(dana.user_id, "WILLR", "")
+
+    def test_refused_rename_changes_nothing(self):
+        self.create(username="willr")
+        dana = self.create(username="dana", display_name="Dana")
+        with self.assertRaises(DuplicateUserError):
+            self.repo.update(dana.user_id, "willr", "Someone Else")
+        self.assertEqual(self.repo.find("dana").display_name, "Dana")
+
+    def test_user_can_change_the_case_of_their_own_name(self):
+        # the unique index compares against other rows, not the row being changed
+        user = self.create(username="willr")
+        self.assertEqual(self.repo.update(user.user_id, "WillR", "").username, "WillR")
+
+    def test_rejects_invalid_input(self):
+        user = self.create()
+        with self.assertRaises(ValidationError):
+            self.repo.update(user.user_id, "ab", "")
+
+    def test_rejected_input_changes_nothing(self):
+        user = self.create()
+        with self.assertRaises(ValidationError):
+            self.repo.update(user.user_id, "ab", "")
+        self.assertIsNotNone(self.repo.find("willr"))
+
+    def test_unknown_id_raises(self):
+        with self.assertRaises(UserNotFoundError):
+            self.repo.update(999, "ghost", "")
+
+    def test_password_survives_a_rename(self):
+        user = self.create()
+        self.repo.update(user.user_id, "dana", "")
+        self.assertIsNotNone(self.repo.authenticate("dana", PASSWORD))
+
+
+class DeleteTest(UserRepositoryTest):
+
+    def setUp(self):
+        super().setUp()
+        self.decks = SqliteDeckRepository(Path(self.dir.name) / "magic.db")
+        self.addCleanup(self.decks.close)
+
+    def count(self, table):
+        return self.decks.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+    def test_removes_the_user(self):
+        user = self.create()
+        self.repo.delete(user.user_id)
+        self.assertIsNone(self.repo.find("willr"))
+
+    def test_deleted_user_cannot_sign_in(self):
+        user = self.create()
+        self.repo.delete(user.user_id)
+        self.assertIsNone(self.repo.authenticate("willr", PASSWORD))
+
+    def test_leaves_other_users_alone(self):
+        willr = self.create(username="willr")
+        self.create(username="dana")
+        self.repo.delete(willr.user_id)
+        self.assertEqual([u.username for u in self.repo.all_users()], ["dana"])
+
+    def test_unknown_id_raises(self):
+        with self.assertRaises(UserNotFoundError):
+            self.repo.delete(999)
+
+    def test_not_found_is_a_validation_error(self):
+        # so the interface shows it the same way as every other rejection
+        with self.assertRaises(ValidationError):
+            self.repo.delete(999)
+
+    def test_cascade_removes_their_decks_and_cards(self):
+        user = self.create()
+        deck = self.decks.create(user.user_id, "Elves")
+        forest = Card.create_from_json({"name": "Forest", "oracle_id": "id-forest"})
+        self.decks.add_card(user.user_id, deck.deck_id, forest)
+
+        self.repo.delete(user.user_id)
+
+        self.assertEqual(self.count("decks"), 0)
+        self.assertEqual(self.count("deck_cards"), 0)
+
+    def test_cascade_leaves_other_users_decks_alone(self):
+        willr = self.create(username="willr")
+        dana = self.create(username="dana")
+        self.decks.create(willr.user_id, "Elves")
+        self.decks.create(dana.user_id, "Goblins")
+
+        self.repo.delete(willr.user_id)
+
+        self.assertEqual([d.name for d in self.decks.decks_for(dana.user_id)], ["Goblins"])
 
 
 class StorageTest(UserRepositoryTest):
