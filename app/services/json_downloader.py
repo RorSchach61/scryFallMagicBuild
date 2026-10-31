@@ -6,16 +6,20 @@ Every outcome is returned as a DownloadResult rather than printed, since the
 packaged app has no console to print to.
 """
 
-import gzip
 import json
 import time
 import urllib.request
+import zlib
 
 from app.api.scryfall_client import ScryfallClient
 from app.config import BULK_DATASET_TYPE, ORACLE_CARDS_PATH, TWELVE_HOURS
+from app.services.dataset import read_cards
 
 # a manual refresh downloads ~25 MB, so repeated clicks are held off for a while
 REFRESH_COOLDOWN = 5 * 60
+
+# about half the real file. it should only grow, so far fewer means a bad file
+MIN_CARD_COUNT = 20_000
 
 SKIPPED, UP_TO_DATE, DOWNLOADED, FAILED = "skipped", "up_to_date", "downloaded", "failed"
 
@@ -58,18 +62,27 @@ def cooldown_remaining(last_refresh, now=None):
     return max(0, REFRESH_COOLDOWN - (now - last_refresh))
 
 
-# the size the server announced catches a cut-off transfer, and reading the gzip
-# to its end catches anything else that isn't a complete gzip file
+def _is_card(entry):
+    return isinstance(entry, dict) and entry.get("object") == "card" and bool(entry.get("name"))
+
+
+# the size catches a cut-off transfer, and reading every line proves the file
+# is real card data: a gzipped error page or an empty file is still valid gzip
 def validate_download(path, expected_size=None):
     actual = path.stat().st_size
     if expected_size and actual != expected_size:
         raise InvalidDownloadError(f"expected {expected_size:,} bytes, got {actual:,}")
+    total = cards = 0
     try:
-        with gzip.open(path, "rb") as f:
-            while f.read(1024 * 1024):
-                pass
-    except (OSError, EOFError) as exc:
+        for entry in read_cards(path):
+            total += 1
+            cards += _is_card(entry)
+    except (OSError, EOFError, zlib.error, ValueError) as exc:
         raise InvalidDownloadError(f"file is not readable ({exc})") from exc
+    if cards < total:
+        raise InvalidDownloadError(f"{total - cards:,} entries are not cards")
+    if cards < MIN_CARD_COUNT:
+        raise InvalidDownloadError(f"only {cards:,} cards, expected at least {MIN_CARD_COUNT:,}")
 
 
 def _find_bulk_entry(client):
@@ -82,14 +95,15 @@ def _is_current(updated_at):
 
 
 # after a successful replace the .part is already gone, so the cleanup only
-# matters when something failed along the way
-def _download_file(url, headers, dest):
+# matters when something failed along the way. the size scryfall listed is
+# preferred: Content-Length comes with the response, so an error page matches it
+def _download_file(url, headers, dest, listed_size=None):
     tmp = dest.with_suffix(".part")
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         request = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(request, timeout=30) as response, open(tmp, "wb") as out:
-            expected_size = int(response.headers.get("Content-Length") or 0)
+            expected_size = listed_size or int(response.headers.get("Content-Length") or 0)
             while chunk := response.read(1024 * 1024):
                 out.write(chunk)
         validate_download(tmp, expected_size)
@@ -109,7 +123,8 @@ def _refresh_from_scryfall(force, report):
         return DownloadResult(UP_TO_DATE)
     if report:
         report("Downloading card data from Scryfall…")
-    _download_file(entry["jsonl_download_uri"], client.headers, ORACLE_CARDS_PATH)
+    _download_file(entry["jsonl_download_uri"], client.headers, ORACLE_CARDS_PATH,
+                   entry.get("compressed_size"))
     if updated_at:
         _store_updated_at(updated_at)
     return DownloadResult(DOWNLOADED, "Card data updated from Scryfall")
