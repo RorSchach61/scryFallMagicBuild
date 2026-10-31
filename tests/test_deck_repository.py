@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -35,7 +36,6 @@ class DeckRepositoryTest(unittest.TestCase):
         self.dana = self.users.create("dana", "Dana", PASSWORD, PASSWORD).user_id
 
         self.repo = SqliteDeckRepository(self.path)
-        self.addCleanup(self.repo.close)
 
 
 class CreateTest(DeckRepositoryTest):
@@ -165,7 +165,8 @@ class DeleteTest(DeckRepositoryTest):
         deck = self.repo.create(self.will, "Zombies")
         self.repo.add_card(self.will, deck.deck_id, card("Forest"))
         self.repo.delete(self.will, deck.deck_id)
-        count = self.repo.conn.execute("SELECT COUNT(*) FROM deck_cards").fetchone()[0]
+        with connect(self.path) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM deck_cards").fetchone()[0]
         self.assertEqual(count, 0)
 
     def test_missing_deck_raises(self):
@@ -251,16 +252,14 @@ class MigrationTest(unittest.TestCase):
             )
             conn.execute("INSERT INTO decks (user_id, name, created_at) VALUES (1, 'Old', 0)")
 
-        repo = SqliteDeckRepository(self.path)
-        self.addCleanup(repo.close)
-        [deck] = repo.decks_for(1)
+        [deck] = SqliteDeckRepository(self.path).decks_for(1)
         self.assertEqual(deck.name, "Old")
         self.assertIsNone(deck.format)
 
     def test_running_twice_is_harmless(self):
         SqliteUserRepository(self.path)
-        SqliteDeckRepository(self.path).close()
-        SqliteDeckRepository(self.path).close()
+        SqliteDeckRepository(self.path)
+        SqliteDeckRepository(self.path)
 
 
 class PersistenceTest(DeckRepositoryTest):
@@ -268,17 +267,23 @@ class PersistenceTest(DeckRepositoryTest):
     def test_decks_survive_reopening(self):
         deck = self.repo.create(self.will, "Zombies")
         self.repo.add_card(self.will, deck.deck_id, card("Forest"), quantity=2)
-        self.repo.close()
 
-        reopened = SqliteDeckRepository(self.path)
-        self.addCleanup(reopened.close)
-        entries = reopened.cards_in(self.will, deck.deck_id)
+        entries = SqliteDeckRepository(self.path).cards_in(self.will, deck.deck_id)
         self.assertEqual([(e.name, e.quantity) for e in entries], [("Forest", 2)])
 
     def test_deleting_a_user_deletes_their_decks(self):
         self.repo.create(self.will, "Burn")
         self.users.delete(self.will)
         self.assertEqual(self.repo.decks_for(self.will), [])
+
+    def test_works_from_another_thread(self):
+        # the shared connection this replaced would have refused this call
+        self.repo.create(self.will, "Burn")
+        found = []
+        thread = threading.Thread(target=lambda: found.extend(self.repo.decks_for(self.will)))
+        thread.start()
+        thread.join()
+        self.assertEqual([deck.name for deck in found], ["Burn"])
 
 
 if __name__ == "__main__":

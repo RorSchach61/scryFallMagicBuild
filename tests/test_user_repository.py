@@ -157,7 +157,6 @@ class DeleteTest(UserRepositoryTest):
     def setUp(self):
         super().setUp()
         self.decks = SqliteDeckRepository(self.path)
-        self.addCleanup(self.decks.close)
 
     def count(self, table):
         with connect(self.path) as conn:
