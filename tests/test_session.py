@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from app.repositories.user_repository import SqliteUserRepository
 from app.services import security
 from app.services.session import Session
-from app.services.user_repository import SqliteUserRepository
 
 PASSWORD = "hunter2hunter2"
 
@@ -20,7 +20,6 @@ class SessionTest(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         self.users = SqliteUserRepository(Path(self.dir.name) / "magic.db")
-        self.addCleanup(self.users.close)
         self.users.create("willr", "Will R", PASSWORD, PASSWORD)
         self.session = Session(self.users)
 

@@ -7,6 +7,7 @@ import sqlite3
 import time
 from abc import ABC, abstractmethod
 from app.config import USER_DB_PATH
+from app.db.connection import connect
 from app.models.user import User
 from app.services import security
 from app.services.user_validation import (
@@ -67,11 +68,9 @@ class SqliteUserRepository(UserRepository):
 
     def __init__(self, path=USER_DB_PATH):
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(path), check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA foreign_keys = ON")
-        self.conn.executescript(SCHEMA)
-        self.conn.commit()
+        self._path = path
+        with connect(path) as conn:
+            conn.executescript(SCHEMA)
 
     def create(self, username, display_name, password, confirmation=None):
         problem = check_new_user(username, display_name, password, confirmation)
@@ -83,15 +82,15 @@ class SqliteUserRepository(UserRepository):
         salt, digest = security.hash_password(password)
         created_at = time.time()
         try:
-            cursor = self.conn.execute(
-                """INSERT INTO users (username, display_name, password_salt,
-                                      password_hash, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (username, display_name, salt, digest, created_at),
-            )
+            with connect(self._path) as conn:
+                cursor = conn.execute(
+                    """INSERT INTO users (username, display_name, password_salt,
+                                          password_hash, created_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (username, display_name, salt, digest, created_at),
+                )
         except sqlite3.IntegrityError:
             raise DuplicateUserError(f"The username {username!r} is already taken.")
-        self.conn.commit()
         return User(username, display_name, salt, digest, created_at, cursor.lastrowid)
 
     # the password is left alone here; changing it needs the current one checked
@@ -103,42 +102,43 @@ class SqliteUserRepository(UserRepository):
         username = username.strip()
         display_name = (display_name or "").strip() or None
         try:
-            cursor = self.conn.execute(
-                "UPDATE users SET username = ?, display_name = ? WHERE user_id = ?",
-                (username, display_name, user_id),
-            )
+            with connect(self._path) as conn:
+                cursor = conn.execute(
+                    "UPDATE users SET username = ?, display_name = ? WHERE user_id = ?",
+                    (username, display_name, user_id),
+                )
         except sqlite3.IntegrityError:
             raise DuplicateUserError(f"The username {username!r} is already taken.")
         if cursor.rowcount == 0:
             raise UserNotFoundError("User not found.")
-        self.conn.commit()
-        row = self.conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
-        return self._to_user(row)
+        return self.get(user_id)
 
     # the database removes the user's decks and their cards through
-    # ON DELETE CASCADE, which needs the foreign_keys pragma set in __init__
+    # ON DELETE CASCADE, which connect() switches on for every connection
     def delete(self, user_id):
-        cursor = self.conn.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
-        self.conn.commit()
+        with connect(self._path) as conn:
+            cursor = conn.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
         if cursor.rowcount == 0:
             raise UserNotFoundError("User not found.")
 
     def find(self, username):
-        row = self.conn.execute(
-            "SELECT * FROM users WHERE username = ? COLLATE NOCASE", ((username or "").strip(),)
-        ).fetchone()
+        with connect(self._path) as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE username = ? COLLATE NOCASE",
+                ((username or "").strip(),),
+            ).fetchone()
         return self._to_user(row) if row else None
 
     def get(self, user_id):
-        row = self.conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        with connect(self._path) as conn:
+            row = conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
         return self._to_user(row) if row else None
 
     def all_users(self):
         # user_id breaks ties, since two accounts made in the same clock tick
         # would otherwise come back in an unspecified order
-        rows = self.conn.execute(
-            "SELECT * FROM users ORDER BY created_at, user_id"
-        ).fetchall()
+        with connect(self._path) as conn:
+            rows = conn.execute("SELECT * FROM users ORDER BY created_at, user_id").fetchall()
         return [self._to_user(row) for row in rows]
 
     def authenticate(self, username, password):
@@ -158,6 +158,3 @@ class SqliteUserRepository(UserRepository):
             row["username"], row["display_name"], row["password_salt"],
             row["password_hash"], row["created_at"], row["user_id"],
         )
-
-    def close(self):
-        self.conn.close()

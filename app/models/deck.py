@@ -1,7 +1,7 @@
 """Deck records.
 
 Hold data only. The rules about who may change a deck live in
-services/deck_repository.py, so these stay plain descriptions of stored rows.
+repositories/deck_repository.py, so these stay plain descriptions of stored rows.
 """
 
 
