@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from app.repositories.user_repository import SqliteUserRepository
 from app.services import security
 from app.services.session import Session
-from app.services.user_repository import SqliteUserRepository
 
 PASSWORD = "hunter2hunter2"
 

@@ -1,7 +1,7 @@
 import unittest
 
 from app.models.card import Card
-from app.services.card_repository import InMemoryCardRepository
+from app.repositories.card_repository import InMemoryCardRepository
 
 NAMES = [
     "Forest", "Forestfolk", "Forest Bear", "Deep Forest Hermit",

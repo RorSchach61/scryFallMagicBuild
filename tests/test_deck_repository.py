@@ -4,11 +4,11 @@ from pathlib import Path
 from unittest import mock
 
 from app.models.card import Card
-from app.services import security
-from app.services.deck_repository import (
+from app.repositories.deck_repository import (
     DeckError, DeckNotFoundError, DuplicateDeckError, SqliteDeckRepository,
 )
-from app.services.user_repository import SqliteUserRepository
+from app.repositories.user_repository import SqliteUserRepository
+from app.services import security
 
 PASSWORD = "hunter2hunter2"
 

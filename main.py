@@ -1,10 +1,10 @@
 """Entry point. Assembles the pieces and hands them to the window."""
 from app.gui.app import MagicSearchApp
-from app.services.card_repository import InMemoryCardRepository
-from app.services.deck_repository import SqliteDeckRepository
+from app.repositories.card_repository import InMemoryCardRepository
+from app.repositories.deck_repository import SqliteDeckRepository
+from app.repositories.user_repository import SqliteUserRepository
 from app.services.json_downloader import download_oracle_cards
 from app.services.session import Session
-from app.services.user_repository import SqliteUserRepository
 
 
 # runs on the window's loading thread, so a slow download never delays the window.
