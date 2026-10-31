@@ -1,5 +1,6 @@
 import copy
 import gzip
+import http.client
 import io
 import json
 import os
@@ -65,6 +66,10 @@ class DownloaderTestCase(unittest.TestCase):
         minimum = mock.patch("app.services.json_downloader.MIN_CARD_COUNT", 1)
         minimum.start()
         self.addCleanup(minimum.stop)
+
+        log_error = mock.patch("app.services.json_downloader.log_error")
+        self.log_error = log_error.start()
+        self.addCleanup(log_error.stop)
 
     def list_size(self, size):
         listing = copy.deepcopy(BULK_LIST)
@@ -141,6 +146,56 @@ class DownloadFailureTest(DownloaderTestCase):
         self.urlopen.reset_mock()
         self.serve(card_file("New"))
         self.assertEqual(download_oracle_cards().status, DOWNLOADED)
+
+
+class RefreshFailureTest(DownloaderTestCase):
+
+    def assert_failed_safely(self):
+        self.write_old_file(age=24 * 3600)
+        result = download_oracle_cards()
+        self.assertEqual(result.status, FAILED)
+        self.assertIn("saved copy", result.message)
+        self.assertIn("Old", self.old_file_text())
+
+    def test_listing_cut_off_mid_reply(self):
+        self.client.get_json_data.side_effect = http.client.IncompleteRead(b"{")
+        self.assert_failed_safely()
+
+    def test_server_drops_the_connection(self):
+        self.client.get_json_data.side_effect = http.client.RemoteDisconnected("gone")
+        self.assert_failed_safely()
+
+    def test_download_cut_off_mid_file(self):
+        self.urlopen.side_effect = http.client.IncompleteRead(b"partial")
+        self.assert_failed_safely()
+
+    def test_listing_is_not_valid_json(self):
+        self.client.get_json_data.side_effect = json.JSONDecodeError("bad", "<html>", 0)
+        self.assert_failed_safely()
+
+    def test_listing_has_the_wrong_shape(self):
+        self.client.get_json_data.return_value = {"data": ["not an entry"]}
+        self.assert_failed_safely()
+
+    def test_listing_is_a_list(self):
+        self.client.get_json_data.return_value = ["unexpected"]
+        self.assert_failed_safely()
+
+    def test_listing_entry_has_no_download_link(self):
+        self.client.get_json_data.return_value = {"data": [{"type": "oracle_cards"}]}
+        self.assert_failed_safely()
+
+    def test_a_failed_refresh_is_logged(self):
+        error = http.client.IncompleteRead(b"{")
+        self.client.get_json_data.side_effect = error
+        download_oracle_cards()
+        self.assertIs(self.log_error.call_args.args[1], error)
+
+    def test_a_bug_in_the_code_is_not_hidden(self):
+        self.client.get_json_data.side_effect = NameError("a real bug")
+        self.write_old_file(age=24 * 3600)
+        with self.assertRaises(NameError):
+            download_oracle_cards()
 
 
 class DownloadSuccessTest(DownloaderTestCase):

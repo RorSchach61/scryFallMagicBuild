@@ -6,6 +6,7 @@ Every outcome is returned as a DownloadResult rather than printed, since the
 packaged app has no console to print to.
 """
 
+import http.client
 import json
 import time
 import urllib.request
@@ -14,6 +15,7 @@ import zlib
 from app.api.scryfall_client import ScryfallClient
 from app.config import BULK_DATASET_TYPE, ORACLE_CARDS_PATH, TWELVE_HOURS
 from app.services.dataset import read_cards
+from app.utils.error_log import log_error
 
 # a manual refresh downloads ~25 MB, so repeated clicks are held off for a while
 REFRESH_COOLDOWN = 5 * 60
@@ -137,8 +139,12 @@ def download_oracle_cards(force=False, report=None):
     if not force and ORACLE_CARDS_PATH.exists():
         if time.time() - ORACLE_CARDS_PATH.stat().st_mtime < TWELVE_HOURS:
             return DownloadResult(SKIPPED)
+    # a failed refresh is not fatal: an older file still works, and a missing
+    # one is reported by dataset.py once the window is up. every way a transfer
+    # or a malformed reply can fail is caught, so it cannot stop that file loading
     try:
         return _refresh_from_scryfall(force, report)
-    except (OSError, KeyError, ValueError) as exc:
+    except (OSError, KeyError, TypeError, ValueError, http.client.HTTPException) as exc:
+        log_error("Could not refresh card data", exc)
         fallback = "using the saved copy" if ORACLE_CARDS_PATH.exists() else "no saved copy yet"
         return DownloadResult(FAILED, f"Could not refresh card data, {fallback} ({exc})")
