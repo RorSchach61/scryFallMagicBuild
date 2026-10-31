@@ -1,3 +1,4 @@
+import queue
 import unittest
 from unittest import mock
 
@@ -43,6 +44,50 @@ class CallbackErrorTest(unittest.TestCase):
         calls.attach_mock(self.messagebox.showerror, "show")
         self.report(RuntimeError("database is locked"))
         self.assertEqual([call[0] for call in calls.mock_calls], ["log", "show"])
+
+
+class DrainEventsTest(unittest.TestCase):
+
+    def setUp(self):
+        self.app = mock.Mock()
+        self.app._events = queue.Queue()
+        self.repository = mock.Mock()
+        self.repository.count.return_value = 5
+        self.ready = ("ready", (self.repository, mock.Mock(message="")))
+
+    def drain(self):
+        MagicSearchApp._drain_events(self.app)
+
+    def test_keeps_polling_when_the_queue_is_empty(self):
+        self.drain()
+        self.app.root.after.assert_called_once()
+
+    def test_keeps_polling_after_an_event_fails(self):
+        self.app.deck_panel.refresh.side_effect = RuntimeError("database is locked")
+        self.app._events.put(self.ready)
+        with self.assertRaises(RuntimeError):
+            self.drain()
+        self.app.root.after.assert_called_once()
+
+    def test_the_failure_still_reaches_the_error_handler(self):
+        self.app.deck_panel.refresh.side_effect = RuntimeError("database is locked")
+        self.app._events.put(self.ready)
+        with self.assertRaisesRegex(RuntimeError, "database is locked"):
+            self.drain()
+
+    def test_later_events_are_handled_on_the_next_poll(self):
+        self.app.deck_panel.refresh.side_effect = [RuntimeError("database is locked")]
+        self.app._events.put(self.ready)
+        self.app._events.put(("status", "still working"))
+        with self.assertRaises(RuntimeError):
+            self.drain()
+        self.drain()
+        self.app.status.set.assert_called_with("still working")
+
+    def test_a_failed_load_turns_the_refresh_button_back_on(self):
+        self.app._events.put(("error", OSError("card file is unreadable")))
+        self.drain()
+        self.app.refresh_button.configure.assert_called_with(state="normal")
 
 
 if __name__ == "__main__":

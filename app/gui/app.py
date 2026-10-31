@@ -356,7 +356,10 @@ class MagicSearchApp:
                     self.status.set(f"Could not load cards: {payload}")
         except queue.Empty:
             pass
-        self.root.after(POLL_MS, self._drain_events)
+        finally:
+            # in finally so one failed event cannot stop polling for good. the
+            # error itself carries on to the window's error handler
+            self.root.after(POLL_MS, self._drain_events)
 
     def run(self):
         if not self._require_login():
