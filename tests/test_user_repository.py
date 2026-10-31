@@ -1,9 +1,11 @@
 import sqlite3
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from app.db.connection import connect
 from app.models.card import Card
 from app.repositories.deck_repository import SqliteDeckRepository
 from app.repositories.user_repository import (
@@ -25,8 +27,8 @@ class UserRepositoryTest(unittest.TestCase):
 
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
-        self.repo = SqliteUserRepository(Path(self.dir.name) / "magic.db")
-        self.addCleanup(self.repo.close)
+        self.path = Path(self.dir.name) / "magic.db"
+        self.repo = SqliteUserRepository(self.path)
 
     def create(self, username="willr", display_name="Will R", password=PASSWORD):
         return self.repo.create(username, display_name, password, password)
@@ -154,11 +156,12 @@ class DeleteTest(UserRepositoryTest):
 
     def setUp(self):
         super().setUp()
-        self.decks = SqliteDeckRepository(Path(self.dir.name) / "magic.db")
+        self.decks = SqliteDeckRepository(self.path)
         self.addCleanup(self.decks.close)
 
     def count(self, table):
-        return self.decks.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        with connect(self.path) as conn:
+            return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
     def test_removes_the_user(self):
         user = self.create()
@@ -211,13 +214,15 @@ class StorageTest(UserRepositoryTest):
 
     def test_password_is_not_stored_in_plaintext(self):
         self.create()
-        row = self.repo.conn.execute("SELECT * FROM users").fetchone()
+        with connect(self.path) as conn:
+            row = conn.execute("SELECT * FROM users").fetchone()
         self.assertNotIn(PASSWORD, str(dict(row)))
 
     def test_two_users_sharing_a_password_get_different_salts(self):
         self.create(username="willr")
         self.create(username="dana")
-        rows = self.repo.conn.execute("SELECT password_salt, password_hash FROM users").fetchall()
+        with connect(self.path) as conn:
+            rows = conn.execute("SELECT password_salt, password_hash FROM users").fetchall()
         self.assertNotEqual(rows[0]["password_salt"], rows[1]["password_salt"])
         self.assertNotEqual(rows[0]["password_hash"], rows[1]["password_hash"])
 
@@ -227,8 +232,17 @@ class StorageTest(UserRepositoryTest):
         self.create(username="willr")
         self.create(username="dana")
         with self.assertRaises(sqlite3.IntegrityError):
-            self.repo.conn.execute(
-                "UPDATE users SET username = ? WHERE username = ?", ("WILLR", "dana"))
+            with connect(self.path) as conn:
+                conn.execute("UPDATE users SET username = ? WHERE username = ?", ("WILLR", "dana"))
+
+    def test_works_from_another_thread(self):
+        # the shared connection this replaced would have refused this call
+        user = self.create()
+        found = []
+        thread = threading.Thread(target=lambda: found.append(self.repo.get(user.user_id)))
+        thread.start()
+        thread.join()
+        self.assertEqual(found[0].username, "willr")
 
 
 class FindTest(UserRepositoryTest):
@@ -312,13 +326,8 @@ class PersistenceTest(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         path = Path(directory.name) / "magic.db"
 
-        first = SqliteUserRepository(path)
-        first.create("willr", "Will R", PASSWORD, PASSWORD)
-        first.close()
-
-        second = SqliteUserRepository(path)
-        self.addCleanup(second.close)
-        self.assertIsNotNone(second.authenticate("willr", PASSWORD))
+        SqliteUserRepository(path).create("willr", "Will R", PASSWORD, PASSWORD)
+        self.assertIsNotNone(SqliteUserRepository(path).authenticate("willr", PASSWORD))
 
 
 if __name__ == "__main__":

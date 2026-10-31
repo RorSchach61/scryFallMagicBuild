@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from app.db.connection import connect
 from app.models.card import Card
 from app.repositories.deck_repository import (
     DeckError, DeckNotFoundError, DuplicateDeckError, SqliteDeckRepository,
@@ -30,7 +31,6 @@ class DeckRepositoryTest(unittest.TestCase):
 
         # decks reference users, so the users table has to exist first
         self.users = SqliteUserRepository(self.path)
-        self.addCleanup(self.users.close)
         self.will = self.users.create("willr", "Will R", PASSWORD, PASSWORD).user_id
         self.dana = self.users.create("dana", "Dana", PASSWORD, PASSWORD).user_id
 
@@ -239,18 +239,17 @@ class MigrationTest(unittest.TestCase):
         self.path = Path(directory.name) / "magic.db"
 
     def test_adds_format_to_a_database_made_before_it(self):
-        users = SqliteUserRepository(self.path)
-        self.addCleanup(users.close)
-        users.conn.execute(
-            "CREATE TABLE decks (deck_id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL,"
-            " name TEXT NOT NULL, created_at REAL NOT NULL)"
-        )
-        users.conn.execute(
-            "INSERT INTO users (username, password_salt, password_hash, created_at)"
-            " VALUES ('willr', 's', 'h', 0)"
-        )
-        users.conn.execute("INSERT INTO decks (user_id, name, created_at) VALUES (1, 'Old', 0)")
-        users.conn.commit()
+        SqliteUserRepository(self.path)
+        with connect(self.path) as conn:
+            conn.execute(
+                "CREATE TABLE decks (deck_id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL,"
+                " name TEXT NOT NULL, created_at REAL NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO users (username, password_salt, password_hash, created_at)"
+                " VALUES ('willr', 's', 'h', 0)"
+            )
+            conn.execute("INSERT INTO decks (user_id, name, created_at) VALUES (1, 'Old', 0)")
 
         repo = SqliteDeckRepository(self.path)
         self.addCleanup(repo.close)
@@ -259,7 +258,7 @@ class MigrationTest(unittest.TestCase):
         self.assertIsNone(deck.format)
 
     def test_running_twice_is_harmless(self):
-        SqliteUserRepository(self.path).close()
+        SqliteUserRepository(self.path)
         SqliteDeckRepository(self.path).close()
         SqliteDeckRepository(self.path).close()
 
@@ -278,9 +277,7 @@ class PersistenceTest(DeckRepositoryTest):
 
     def test_deleting_a_user_deletes_their_decks(self):
         self.repo.create(self.will, "Burn")
-        # no delete method on the user repo yet, so delete through its connection
-        self.users.conn.execute("DELETE FROM users WHERE user_id = ?", (self.will,))
-        self.users.conn.commit()
+        self.users.delete(self.will)
         self.assertEqual(self.repo.decks_for(self.will), [])
 
 
