@@ -13,8 +13,9 @@ import queue
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
+from app.config import LOG_PATH
 from app.gui.account_window import AccountWindow
 from app.gui.deck_panel import DeckPanel
 from app.gui.detail_panel import DetailPanel
@@ -23,6 +24,7 @@ from app.gui.search_panel import SearchPanel
 from app.gui.theme import apply_theme
 from app.services.deck_rules import illegal_entries
 from app.services.json_downloader import cooldown_remaining
+from app.utils.error_log import log_error
 
 POLL_MS = 100
 INITIAL_SASH = 660
@@ -48,11 +50,23 @@ class MagicSearchApp:
         self._dark_mode = False
 
         self.root = tk.Tk()
+        self.root.report_callback_exception = self._on_callback_error
         self.root.title(title)
         self.root.geometry("1000x620")
         self.root.minsize(820, 460)
         self.root.withdraw()  # revealed once the gate is passed
         self._build()
+
+    # tk calls this for any error a button or window callback did not handle,
+    # in every window. the default prints to a console the .exe does not have,
+    # which would make a failed action look like an ignored click
+    def _on_callback_error(self, _exc_type, error, _traceback):
+        log_error("Unhandled error in the window", error)
+        messagebox.showerror(
+            "Something went wrong",
+            f"That action did not finish.\nDetails were saved to:\n{LOG_PATH}",
+            parent=self.root,
+        )
 
     def _build(self):
         self.root.columnconfigure(0, weight=1)

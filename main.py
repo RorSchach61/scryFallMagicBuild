@@ -5,6 +5,7 @@ from app.repositories.deck_repository import SqliteDeckRepository
 from app.repositories.user_repository import SqliteUserRepository
 from app.services.json_downloader import download_oracle_cards
 from app.services.session import Session
+from app.utils.error_log import setup_logging
 
 
 # runs on the window's loading thread, so a slow download never delays the window.
@@ -15,6 +16,7 @@ def load_cards(progress=None, report=None, force=False):
 
 
 def main():
+    setup_logging()  # first, so anything that fails below can be recorded
     users = SqliteUserRepository()  # first: the decks table references users
     MagicSearchApp(
         load_repository=load_cards,
