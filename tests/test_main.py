@@ -1,8 +1,23 @@
+import http.client
 import sqlite3
 import unittest
 from unittest import mock
 
 import main
+from app.services.json_downloader import FAILED
+
+
+class LoadCardsTest(unittest.TestCase):
+
+    def test_a_failed_refresh_still_loads_the_saved_cards(self):
+        with mock.patch("app.services.json_downloader.ScryfallClient") as client, \
+                mock.patch("app.services.json_downloader.log_error"), \
+                mock.patch("app.services.json_downloader.ORACLE_CARDS_PATH", mock.Mock()), \
+                mock.patch("main.InMemoryCardRepository") as repository:
+            client.return_value.get_json_data.side_effect = http.client.IncompleteRead(b"{")
+            cards, result = main.load_cards(force=True)
+        self.assertIs(cards, repository.load.return_value)
+        self.assertEqual(result.status, FAILED)
 
 
 class StartupErrorTest(unittest.TestCase):
