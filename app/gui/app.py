@@ -33,6 +33,18 @@ SUN = "☀"       # shown in dark mode: click to switch to light
 DATA_NOTE = "Card data comes from Scryfall and updates about once a day."
 
 
+# for failures before the window exists, so it builds its own hidden root
+def show_startup_error():
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showerror(
+        "Scryfall Card Search could not start",
+        f"Details were saved to:\n{LOG_PATH}",
+        parent=root,
+    )
+    root.destroy()
+
+
 class MagicSearchApp:
 
     # takes a factory for the cards rather than a repository so the window can
@@ -298,6 +310,7 @@ class MagicSearchApp:
                 )
                 self._events.put(("ready", loaded))
             except Exception as exc:  # surfaced in the status bar
+                log_error("Could not load cards", exc)
                 self._events.put(("error", exc))
 
         threading.Thread(target=work, daemon=True).start()

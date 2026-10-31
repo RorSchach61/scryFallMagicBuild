@@ -1,10 +1,11 @@
 import logging
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
 from app.utils.error_log import (
-    LOGGER_NAME, MAX_LOG_BYTES, close_logging, log_error, setup_logging)
+    LOGGER_NAME, MAX_LOG_BYTES, close_logging, log_error, log_thread_errors, setup_logging)
 
 
 def failed_error():
@@ -14,7 +15,7 @@ def failed_error():
         return exc
 
 
-class ErrorLogTest(unittest.TestCase):
+class LogFileTestCase(unittest.TestCase):
 
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
@@ -25,6 +26,9 @@ class ErrorLogTest(unittest.TestCase):
 
     def log_text(self):
         return self.path.read_text(encoding="utf-8")
+
+
+class ErrorLogTest(LogFileTestCase):
 
     def test_writes_the_message(self):
         log_error("Could not delete deck", failed_error())
@@ -67,6 +71,31 @@ class ErrorLogTest(unittest.TestCase):
 
     def test_does_not_write_to_the_console(self):
         self.assertFalse(logging.getLogger(LOGGER_NAME).propagate)
+
+
+class ThreadErrorTest(LogFileTestCase):
+
+    def setUp(self):
+        super().setUp()
+        original = threading.excepthook
+        self.addCleanup(setattr, threading, "excepthook", original)
+        log_thread_errors()
+
+    def run_failing_thread(self):
+        def work():
+            raise RuntimeError("worker failed")
+
+        thread = threading.Thread(target=work, name="card-loader")
+        thread.start()
+        thread.join()
+
+    def test_logs_an_uncaught_thread_error(self):
+        self.run_failing_thread()
+        self.assertIn("RuntimeError: worker failed", self.log_text())
+
+    def test_names_the_thread(self):
+        self.run_failing_thread()
+        self.assertIn("card-loader", self.log_text())
 
 
 class UnusableLogTest(unittest.TestCase):

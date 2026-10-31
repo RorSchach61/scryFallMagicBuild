@@ -4,6 +4,7 @@ The packaged app has no console, so without this a traceback goes nowhere. Only
 the traceback is written, never field values, so passwords cannot reach the log.
 """
 import logging
+import threading
 from logging.handlers import RotatingFileHandler
 
 from app.config import LOG_PATH
@@ -41,3 +42,13 @@ def close_logging():
 def log_error(message, error):
     logging.getLogger(LOGGER_NAME).error(
         message, exc_info=(type(error), error, error.__traceback__))
+
+
+# tk's error handler only sees the main thread, so anything a background thread
+# leaves uncaught comes here. it can only be logged: threads must not touch tk
+def log_thread_errors():
+    def on_thread_error(args):
+        if args.exc_value is not None:
+            log_error(f"Unhandled error on thread {args.thread.name}", args.exc_value)
+
+    threading.excepthook = on_thread_error
