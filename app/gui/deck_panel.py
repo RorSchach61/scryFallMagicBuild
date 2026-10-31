@@ -183,7 +183,7 @@ class DeckPanel(ttk.Frame):
         if deck is None or index < 0:
             return
         format_key = FORMATS[index - 1][0] if index > 0 else None
-        self._on_set_format(deck.deck_id, format_key)
+        self._attempt(self._on_set_format, deck.deck_id, format_key)
 
     def _create(self):
         try:
@@ -203,8 +203,8 @@ class DeckPanel(ttk.Frame):
         if not messagebox.askyesno("Delete deck", f"Delete {deck.name!r} and all its cards?",
                                    parent=self):
             return
-        self._on_delete(deck.deck_id)
-        self._set_message(f"Deleted deck {deck.name!r}.", OK_COLOR)
+        if self._attempt(self._on_delete, deck.deck_id):
+            self._set_message(f"Deleted deck {deck.name!r}.", OK_COLOR)
 
     def _remove(self):
         deck = self._selected_deck()
@@ -212,8 +212,20 @@ class DeckPanel(ttk.Frame):
         if deck is None or not selection:
             self._set_message("Select a card in the deck first.", ERROR_COLOR)
             return
-        self._on_remove(deck.deck_id, selection[0])
-        self._set_message("", OK_COLOR)
+        if self._attempt(self._on_remove, deck.deck_id, selection[0]):
+            self._set_message("", OK_COLOR)
+
+    # a deck error is expected, such as a deck deleted in another window, so it
+    # shows here and the stale list is rebuilt. anything else is unexpected and
+    # carries on to the window's error handler
+    def _attempt(self, action, *args):
+        try:
+            action(*args)
+        except ValueError as exc:
+            self.refresh()
+            self._set_message(str(exc), ERROR_COLOR)
+            return False
+        return True
 
     def _set_message(self, text, color):
         self.message.configure(text=text, foreground=color)

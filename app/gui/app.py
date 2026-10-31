@@ -13,8 +13,9 @@ import queue
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
+from app.config import LOG_PATH
 from app.gui.account_window import AccountWindow
 from app.gui.deck_panel import DeckPanel
 from app.gui.detail_panel import DetailPanel
@@ -23,12 +24,25 @@ from app.gui.search_panel import SearchPanel
 from app.gui.theme import apply_theme
 from app.services.deck_rules import illegal_entries
 from app.services.json_downloader import cooldown_remaining
+from app.utils.error_log import log_error
 
 POLL_MS = 100
 INITIAL_SASH = 660
 MOON = "\U0001F319"  # shown in light mode: click to switch to dark
 SUN = "☀"       # shown in dark mode: click to switch to light
 DATA_NOTE = "Card data comes from Scryfall and updates about once a day."
+
+
+# for failures before the window exists, so it builds its own hidden root
+def show_startup_error():
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showerror(
+        "Scryfall Card Search could not start",
+        f"Details were saved to:\n{LOG_PATH}",
+        parent=root,
+    )
+    root.destroy()
 
 
 class MagicSearchApp:
@@ -48,11 +62,23 @@ class MagicSearchApp:
         self._dark_mode = False
 
         self.root = tk.Tk()
+        self.root.report_callback_exception = self._on_callback_error
         self.root.title(title)
         self.root.geometry("1000x620")
         self.root.minsize(820, 460)
         self.root.withdraw()  # revealed once the gate is passed
         self._build()
+
+    # tk calls this for any error a button or window callback did not handle,
+    # in every window. the default prints to a console the .exe does not have,
+    # which would make a failed action look like an ignored click
+    def _on_callback_error(self, _exc_type, error, _traceback):
+        log_error("Unhandled error in the window", error)
+        messagebox.showerror(
+            "Something went wrong",
+            f"That action did not finish.\nDetails were saved to:\n{LOG_PATH}",
+            parent=self.root,
+        )
 
     def _build(self):
         self.root.columnconfigure(0, weight=1)
@@ -284,6 +310,7 @@ class MagicSearchApp:
                 )
                 self._events.put(("ready", loaded))
             except Exception as exc:  # surfaced in the status bar
+                log_error("Could not load cards", exc)
                 self._events.put(("error", exc))
 
         threading.Thread(target=work, daemon=True).start()
@@ -329,7 +356,10 @@ class MagicSearchApp:
                     self.status.set(f"Could not load cards: {payload}")
         except queue.Empty:
             pass
-        self.root.after(POLL_MS, self._drain_events)
+        finally:
+            # in finally so one failed event cannot stop polling for good. the
+            # error itself carries on to the window's error handler
+            self.root.after(POLL_MS, self._drain_events)
 
     def run(self):
         if not self._require_login():

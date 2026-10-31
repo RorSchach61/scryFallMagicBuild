@@ -34,3 +34,6 @@ data/*.jsonl.gz
 data/*.db
 data/*.db-wal
 data/*.db-shm
+
+# error logs
+data/logs/
