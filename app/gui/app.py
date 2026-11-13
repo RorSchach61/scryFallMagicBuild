@@ -5,8 +5,8 @@ thread because parsing the dataset takes seconds and would otherwise freeze the
 window; results come back through a queue since tk widgets may only be touched
 from the thread that created them.
 
-The window stays hidden until the sign-in gate succeeds, and hides again on
-sign out rather than tearing down, so the loaded dataset survives.
+The app is single-user: main.py picks the local account and passes its id in,
+so there is no sign-in screen.
 """
 import math
 import queue
@@ -16,15 +16,14 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from app.config import LOG_PATH
-from app.gui.account_window import AccountWindow
 from app.gui.deck_panel import DeckPanel
 from app.gui.detail_panel import DetailPanel
-from app.gui.login_window import LoginWindow
 from app.gui.search_panel import SearchPanel
 from app.gui.theme import apply_theme
 from app.services.deck_rules import illegal_entries
 from app.services.json_downloader import cooldown_remaining
 from app.utils.error_log import log_error
+from app.services.settings import load_settings, save_settings
 
 POLL_MS = 100
 INITIAL_SASH = 660
@@ -49,24 +48,24 @@ class MagicSearchApp:
 
     # takes a factory for the cards rather than a repository so the window can
     # render and report progress while the dataset is still loading
-    def __init__(self, load_repository, user_repository, deck_repository, session,
+    def __init__(self, load_repository, deck_repository, user_id,
                  title="Scryfall Card Search"):
         self._load_repository = load_repository
-        self._users = user_repository
         self._deck_repo = deck_repository
-        self._session = session
+        self._owner_id = user_id
         self._repository = None
         self._events = queue.Queue()
         self._loading = False
         self._last_refresh = None  # when the refresh button last started a download
-        self._dark_mode = False
+        self._settings = load_settings()
+        self._dark_mode = self._settings["dark_mode"]
 
         self.root = tk.Tk()
         self.root.report_callback_exception = self._on_callback_error
         self.root.title(title)
         self.root.geometry("1000x620")
         self.root.minsize(820, 460)
-        self.root.withdraw()  # revealed once the gate is passed
+        self.root.withdraw()  # revealed by run() once everything is built
         self._build()
 
     # tk calls this for any error a button or window callback did not handle,
@@ -107,12 +106,6 @@ class MagicSearchApp:
         ttk.Label(bar, textvariable=self.status, relief="sunken",
                   anchor="w", padding=(6, 3)).grid(row=0, column=0, sticky="ew")
 
-        self.identity = tk.StringVar(value="")
-        ttk.Label(bar, textvariable=self.identity, padding=(10, 3)).grid(row=0, column=1)
-        ttk.Button(bar, text="Edit account", command=self._edit_account).grid(
-            row=0, column=2, padx=(0, 4))
-        ttk.Button(bar, text="Sign out", command=self._sign_out).grid(row=0, column=3, padx=(0, 4))
-
         self._apply_theme()
 
     def _build_cards_tab(self, parent):
@@ -125,7 +118,7 @@ class MagicSearchApp:
         return panes
 
     # must run after deiconify(), not at construction time: the window is
-    # withdrawn until sign-in succeeds, and winfo_width() on a withdrawn,
+    # withdrawn until run() shows it, and winfo_width() on a withdrawn,
     # never-yet-shown window returns 1, not its real size. Placing the sash
     # off that bogus width drives it negative and the search pane collapses
     # to nothing, which is exactly what a too-early call here caused before.
@@ -147,6 +140,11 @@ class MagicSearchApp:
 
     def _toggle_theme(self):
         self._dark_mode = not self._dark_mode
+        self._settings["dark_mode"] = self._dark_mode
+        try:
+            save_settings(self._settings)
+        except OSError as e:
+            log_error(e)
         self._apply_theme()
 
     def _search(self, term, limit):
@@ -163,8 +161,8 @@ class MagicSearchApp:
         self.detail_panel.show(card)
 
     # -- decks -------------------------------------------------------------
-    # every deck call passes the signed-in user's id and the repository checks
-    # it, so neither panel ever decides whose decks it is showing
+    # every deck call passes the local user's id, which the repository still
+    # checks, so neither panel ever decides whose decks it is showing
 
     # same split as the card tab, so a card in a deck can be inspected without
     # leaving the tab
@@ -211,7 +209,7 @@ class MagicSearchApp:
         return illegal_entries(format_key, entries, self._repository.find)
 
     def _user_id(self):
-        return self._session.user.user_id
+        return self._owner_id
 
     # both the deck tab and the card pane's deck picker show deck data, so
     # any change refreshes the two together
@@ -246,51 +244,6 @@ class MagicSearchApp:
             return
         self._refresh_decks()
         self.status.set(f"Added {card.name} to {deck.name}")
-
-    # -- sign in -----------------------------------------------------------
-
-    def _require_login(self):
-        gate = LoginWindow(self.root, self._session, on_create=self._users.create)
-        self.root.wait_window(gate)
-        return self._session.is_authenticated()
-
-    # runs after every successful sign in, so a second user never sees the
-    # previous user's decks
-    def _on_signed_in(self):
-        self._show_identity()
-        self._refresh_decks()
-
-    def _show_identity(self):
-        self.identity.set(f"Signed in as {self._session.label()}")
-
-    def _sign_out(self):
-        self._session.logout()
-        self.root.withdraw()
-        if self._require_login():
-            self._on_signed_in()
-            self._show_window()
-        else:
-            self.root.destroy()
-
-    # -- account -----------------------------------------------------------
-
-    def _edit_account(self):
-        AccountWindow(self.root, self._session.user, on_save=self._save_account,
-                      on_check_password=self._check_password, on_delete=self._delete_account)
-
-    def _save_account(self, username, display_name):
-        user = self._users.update(self._user_id(), username, display_name)
-        self._show_identity()
-        return user
-
-    def _check_password(self, password):
-        return self._users.authenticate(self._session.user.username, password) is not None
-
-    # signing out straight away hides the window, so no deck action can run
-    # with a user that no longer exists
-    def _delete_account(self):
-        self._users.delete(self._user_id())
-        self._sign_out()
 
     # -- dataset loading ---------------------------------------------------
 
@@ -346,10 +299,8 @@ class MagicSearchApp:
                     loaded = f"{repository.count():,} cards loaded"
                     self.status.set(f"{loaded}. {download.message}" if download.message else loaded)
                     self.search_panel.focus_entry()
-                    # the legality column is blank until card data exists, and
-                    # loading can finish while the user is signed out
-                    if self._session.is_authenticated():
-                        self.deck_panel.refresh()
+                    # the legality column is blank until card data exists
+                    self.deck_panel.refresh()
                 elif kind == "error":
                     self._loading = False
                     self.refresh_button.configure(state="normal")
@@ -362,10 +313,7 @@ class MagicSearchApp:
             self.root.after(POLL_MS, self._drain_events)
 
     def run(self):
-        if not self._require_login():
-            self.root.destroy()  # gate dismissed, nothing to show
-            return
-        self._on_signed_in()
+        self._refresh_decks()
         self._show_window()
         self.root.after(POLL_MS, self._drain_events)
         self._load_in_background()

@@ -2,7 +2,6 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest import mock
 
 from app.db.connection import connect
 from app.models.card import Card
@@ -10,9 +9,6 @@ from app.repositories.deck_repository import (
     DeckError, DeckNotFoundError, DuplicateDeckError, SqliteDeckRepository,
 )
 from app.repositories.user_repository import SqliteUserRepository
-from app.services import security
-
-PASSWORD = "hunter2hunter2"
 
 
 def card(name, oracle_id=None):
@@ -22,18 +18,14 @@ def card(name, oracle_id=None):
 class DeckRepositoryTest(unittest.TestCase):
 
     def setUp(self):
-        patcher = mock.patch.object(security, "ROUNDS", 1_000)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         self.path = Path(self.dir.name) / "magic.db"
 
         # decks reference users, so the users table has to exist first
         self.users = SqliteUserRepository(self.path)
-        self.will = self.users.create("willr", "Will R", PASSWORD, PASSWORD).user_id
-        self.dana = self.users.create("dana", "Dana", PASSWORD, PASSWORD).user_id
+        self.will = self.users.create("willr").user_id
+        self.dana = self.users.create("dana").user_id
 
         self.repo = SqliteDeckRepository(self.path)
 
@@ -270,11 +262,6 @@ class PersistenceTest(DeckRepositoryTest):
 
         entries = SqliteDeckRepository(self.path).cards_in(self.will, deck.deck_id)
         self.assertEqual([(e.name, e.quantity) for e in entries], [("Forest", 2)])
-
-    def test_deleting_a_user_deletes_their_decks(self):
-        self.repo.create(self.will, "Burn")
-        self.users.delete(self.will)
-        self.assertEqual(self.repo.decks_for(self.will), [])
 
     def test_works_from_another_thread(self):
         # the shared connection this replaced would have refused this call

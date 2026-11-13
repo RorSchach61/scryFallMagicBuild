@@ -6,7 +6,7 @@ from app.repositories.card_repository import InMemoryCardRepository
 from app.repositories.deck_repository import SqliteDeckRepository
 from app.repositories.user_repository import SqliteUserRepository
 from app.services.json_downloader import download_oracle_cards
-from app.services.session import Session
+from app.services.local_user import local_user
 from app.utils.error_log import log_error, log_thread_errors, setup_logging
 
 
@@ -21,9 +21,8 @@ def start():
     users = SqliteUserRepository()  # first: the decks table references users
     MagicSearchApp(
         load_repository=load_cards,
-        user_repository=users,
         deck_repository=SqliteDeckRepository(),
-        session=Session(users),
+        user_id=local_user(users).user_id,
     ).run()
 
 

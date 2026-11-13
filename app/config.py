@@ -15,9 +15,11 @@ if getattr(sys, "frozen", False):
     DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / "ScryfallSearch"
 else:
     DATA_DIR = PROJECT_ROOT / "data"
+
 ORACLE_CARDS_PATH = DATA_DIR / "oracle_cards.jsonl.gz"
 USER_DB_PATH = DATA_DIR / "magic.db"
 LOG_PATH = DATA_DIR / "logs" / "app.log"
+SETTINGS_PATH = DATA_DIR / "settings.json"
 
 # scryfall bulk type: one entry per unique card rather than one per printing
 BULK_DATASET_TYPE = "oracle_cards"

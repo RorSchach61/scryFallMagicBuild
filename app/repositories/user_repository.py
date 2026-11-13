@@ -1,17 +1,14 @@
 """User storage, behind an interface.
 
-Mirrors the card side: callers depend on UserRepository, and the SQLite backing
-can be swapped without touching the interface above it.
+The app is single-user, so this only creates and lists the account that owns
+the decks. The table keeps its old password columns because databases made
+while the app had a sign-in screen still have them marked NOT NULL.
 """
-import sqlite3
 import time
 from abc import ABC, abstractmethod
 from app.config import USER_DB_PATH
 from app.db.connection import connect
 from app.models.user import User
-from app.services import security
-from app.services.user_validation import (
-    ValidationError, check_display_name, check_new_user, check_username)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -26,43 +23,15 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username COLLATE NOCASE);
 """
 
-class DuplicateUserError(ValidationError):
-    """Raised when a username is already taken."""
-
-# lookups answer None for a missing user; changes raise this instead, since
-# changing a user that does not exist means the caller has a stale id
-class UserNotFoundError(ValidationError):
-    """Raised when no user has the given id."""
-
 class UserRepository(ABC):
 
     @abstractmethod
-    def create(self, username, display_name, password, confirmation=None):
-        """Validate and store a new user, returning it."""
-
-    @abstractmethod
-    def update(self, user_id, username, display_name):
-        """Validate and change a user's names, returning the updated user."""
-
-    @abstractmethod
-    def find(self, username):
-        """Return the matching user, or None."""
-
-    @abstractmethod
-    def get(self, user_id):
-        """Return the user with this id, or None."""
+    def create(self, username):
+        """Store a new user, returning it."""
 
     @abstractmethod
     def all_users(self):
         """Every user, oldest first."""
-
-    @abstractmethod
-    def authenticate(self, username, password):
-        """Return the user when the password is correct, otherwise None."""
-
-    @abstractmethod
-    def delete(self, user_id):
-        """Remove the user and, by cascade, their decks."""
 
 class SqliteUserRepository(UserRepository):
 
@@ -72,89 +41,21 @@ class SqliteUserRepository(UserRepository):
         with connect(path) as conn:
             conn.executescript(SCHEMA)
 
-    def create(self, username, display_name, password, confirmation=None):
-        problem = check_new_user(username, display_name, password, confirmation)
-        if problem:
-            raise ValidationError(problem)
-
-        username = username.strip()
-        display_name = (display_name or "").strip() or None
-        salt, digest = security.hash_password(password)
+    # nothing signs in any more, so the password columns are filled with
+    # empty strings only to satisfy their NOT NULL constraint
+    def create(self, username):
         created_at = time.time()
-        try:
-            with connect(self._path) as conn:
-                cursor = conn.execute(
-                    """INSERT INTO users (username, display_name, password_salt,
-                                          password_hash, created_at)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (username, display_name, salt, digest, created_at),
-                )
-        except sqlite3.IntegrityError:
-            raise DuplicateUserError(f"The username {username!r} is already taken.")
-        return User(username, display_name, salt, digest, created_at, cursor.lastrowid)
-
-    # the password is left alone here; changing it needs the current one checked
-    def update(self, user_id, username, display_name):
-        problem = check_username(username) or check_display_name(display_name)
-        if problem:
-            raise ValidationError(problem)
-
-        username = username.strip()
-        display_name = (display_name or "").strip() or None
-        try:
-            with connect(self._path) as conn:
-                cursor = conn.execute(
-                    "UPDATE users SET username = ?, display_name = ? WHERE user_id = ?",
-                    (username, display_name, user_id),
-                )
-        except sqlite3.IntegrityError:
-            raise DuplicateUserError(f"The username {username!r} is already taken.")
-        if cursor.rowcount == 0:
-            raise UserNotFoundError("User not found.")
-        return self.get(user_id)
-
-    # the database removes the user's decks and their cards through
-    # ON DELETE CASCADE, which connect() switches on for every connection
-    def delete(self, user_id):
         with connect(self._path) as conn:
-            cursor = conn.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
-        if cursor.rowcount == 0:
-            raise UserNotFoundError("User not found.")
-
-    def find(self, username):
-        with connect(self._path) as conn:
-            row = conn.execute(
-                "SELECT * FROM users WHERE username = ? COLLATE NOCASE",
-                ((username or "").strip(),),
-            ).fetchone()
-        return self._to_user(row) if row else None
-
-    def get(self, user_id):
-        with connect(self._path) as conn:
-            row = conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
-        return self._to_user(row) if row else None
+            cursor = conn.execute(
+                """INSERT INTO users (username, password_salt, password_hash, created_at)
+                   VALUES (?, '', '', ?)""",
+                (username, created_at),
+            )
+        return User(username, created_at, cursor.lastrowid)
 
     def all_users(self):
         # user_id breaks ties, since two accounts made in the same clock tick
         # would otherwise come back in an unspecified order
         with connect(self._path) as conn:
             rows = conn.execute("SELECT * FROM users ORDER BY created_at, user_id").fetchall()
-        return [self._to_user(row) for row in rows]
-
-    def authenticate(self, username, password):
-        user = self.find(username)
-        if user is None:
-            # hash anyway so a missing user does not answer faster than a
-            # wrong password and reveal which usernames exist
-            security.hash_password(password or "", security.new_salt())
-            return None
-        if security.verify_password(password or "", user.password_salt, user.password_hash):
-            return user
-        return None
-
-    @staticmethod
-    def _to_user(row):
-        return User(
-            row["username"], row["display_name"], row["password_salt"],
-            row["password_hash"], row["created_at"], row["user_id"],
-        )
+        return [User(row["username"], row["created_at"], row["user_id"]) for row in rows]
